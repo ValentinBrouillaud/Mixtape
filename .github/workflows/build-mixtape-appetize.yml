@@ -1,0 +1,58 @@
+name: Build Mixtape for Appetize (experimental iOS 26.0)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - name: Checkout Mixtape sources
+        uses: actions/checkout@v4
+
+      - name: Check Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Install VLCKit dependencies (Carthage)
+        run: |
+          if ! command -v carthage >/dev/null; then brew install carthage; fi
+          carthage bootstrap --use-xcframeworks --platform iOS --cache-builds
+
+      - name: Build iOS Simulator app (experimental iOS 26.0 target)
+        run: |
+          xcodebuild \
+            -project Mixtape.xcodeproj \
+            -scheme Mixtape \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$GITHUB_WORKSPACE/build" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=26.0 \
+            build
+
+      - name: Package simulator .app as a ZIP for Appetize
+        run: |
+          APP="$GITHUB_WORKSPACE/build/Build/Products/Release-iphonesimulator/Mixtape.app"
+          test -d "$APP"
+          echo 'Minimum supported OS:'
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist"
+          cd "$(dirname "$APP")"
+          ditto -c -k --sequesterRsrc --keepParent Mixtape.app "$GITHUB_WORKSPACE/Mixtape-Appetize.zip"
+          ls -lh "$GITHUB_WORKSPACE/Mixtape-Appetize.zip"
+
+      - name: Publish ZIP as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mixtape-Appetize
+          path: Mixtape-Appetize.zip
+          if-no-files-found: error
+          retention-days: 7
