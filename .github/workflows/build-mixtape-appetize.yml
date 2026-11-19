@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-ios-simulator:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 75
     steps:
       - name: Checkout Mixtape sources
