@@ -1,0 +1,1348 @@
+name: Mixtape - iOS 18 Interactive Web Player Fallback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 120
+    env:
+      BUILD_ROOT: ${{ github.workspace }}/build-ios18-clean
+      DERIVED_DATA: ${{ github.workspace }}/build-ios18-clean/DerivedData
+      SPM_SOURCES: ${{ github.workspace }}/build-ios18-clean/SourcePackages
+      LOG_DIR: ${{ github.workspace }}/build-ios18-clean/logs
+
+    steps:
+      - name: Checkout your Mixtape fork
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP=/Applications/Xcode_26.2.app
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "::error::Xcode 26.2 is missing on the GitHub runner"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          sudo xcode-select --switch "$XCODE_APP/Contents/Developer"
+          xcodebuild -version > "$RUNNER_TEMP/xcode-version.txt"
+          cat "$RUNNER_TEMP/xcode-version.txt"
+          grep -Fxq 'Xcode 26.2' "$RUNNER_TEMP/xcode-version.txt"
+          ARCH="$(uname -m)"
+          echo "Runner architecture: $ARCH"
+          if [[ "$ARCH" != 'arm64' && "$ARCH" != 'x86_64' ]]; then
+            echo "::error::Unsupported macOS runner architecture: $ARCH"
+            exit 1
+          fi
+
+      - name: Prepare fresh build directories and macro trust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$BUILD_ROOT"
+          mkdir -p "$DERIVED_DATA" "$SPM_SOURCES" "$LOG_DIR"
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          xcodebuild -showsdks > "$LOG_DIR/sdks.txt"
+
+      - name: Port visual APIs to iOS 18 and audit the remaining APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/port_ios18.py" <<'PYPORT'
+          #!/usr/bin/env python3
+          """Conservative first-pass iOS 18 compatibility patch for Mixtape.
+          
+          Run at the root of a checked-out Mixtape repository. All changes are
+          restricted to the iOS deployment target and selected SwiftUI visual APIs.
+          This is NOT a complete port; the CI build reports outstanding compiler errors.
+          """
+          from pathlib import Path
+          import re
+          import sys
+          import json
+          
+          ROOT = Path.cwd()
+          project = ROOT / 'Mixtape.xcodeproj/project.pbxproj'
+          if not project.is_file() or not (ROOT/'Player').is_dir():
+              sys.exit('Run from a Mixtape repository root (Mixtape.xcodeproj and Player required).')
+          
+          p = project.read_text(encoding='utf-8')
+          # Change only app target Debug/Release occurrences; NEVER override all packages via xcodebuild.
+          new, count = re.subn(r'(\bIPHONEOS_DEPLOYMENT_TARGET\s*=\s*)26\.1(\s*;)', r'\g<1>18.0\2', p)
+          if count not in (0, 2):
+              sys.exit(f'Unexpected number of iOS deployment-target occurrences: {count}. No files changed.')
+          if count == 0 and len(re.findall(r'\bIPHONEOS_DEPLOYMENT_TARGET\s*=\s*18\.0\s*;', p)) != 2:
+              sys.exit('Could not locate exactly two target settings at 26.1 or 18.0; inspect project.pbxproj.')
+          project.write_text(new, encoding='utf-8')
+          
+          # A source-level compatibility shim. No player/download/network services are touched.
+          shim = ROOT/'Utilities/MixtapeIOS18Compat.swift'
+          if not shim.exists():
+              shim.parent.mkdir(parents=True,exist_ok=True)
+              shim.write_text('''#if os(iOS)
+          import SwiftUI
+          
+          // Backwards-compatible visual features for iOS 18.
+          // All native iOS 26 behavior is preserved on iOS 26+.
+          extension View {
+              @ViewBuilder
+              func mixtapeCompatTabBarMinimizeOnScrollDown() -> some View {
+                  if #available(iOS 26.0, *) {
+                      self.tabBarMinimizeBehavior(.onScrollDown)
+                  } else {
+                      self
+                  }
+              }
+          
+              @ViewBuilder
+              func mixtapeCompatTabViewBottomAccessory<Accessory: View>(
+                  @ViewBuilder content: () -> Accessory
+              ) -> some View {
+                  if #available(iOS 26.0, *) {
+                      self.tabViewBottomAccessory(content: content)
+                  } else {
+                      // iOS 18 fallback: render the accessory, but inject
+                      // PlayerBarAppearance directly at its use site.
+                      self.safeAreaInset(edge: .bottom, spacing: 0) {
+                          content()
+                      }
+                  }
+              }
+          
+              @ViewBuilder
+              func mixtapeCompatGlassEffect() -> some View {
+                  if #available(iOS 26.0, *) {
+                      self.glassEffect()
+                  } else {
+                      self.background(.ultraThinMaterial)
+                          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                  }
+              }
+          }
+          #endif
+          ''',encoding='utf-8')
+          
+          replacement_stats = {}
+          # Only exact, recognizable no-argument/known-argument expressions are changed.
+          replacements = (
+              ('.tabBarMinimizeBehavior(.onScrollDown)', '.mixtapeCompatTabBarMinimizeOnScrollDown()'),
+              ('.tabViewBottomAccessory {', '.mixtapeCompatTabViewBottomAccessory {'),
+              ('.glassEffect()', '.mixtapeCompatGlassEffect()'),
+              ('.buttonStyle(.glassProminent)', '.buttonStyle(.borderedProminent)'),
+              ('.buttonStyle(.glass)', '.buttonStyle(.bordered)'),
+          )
+          for source in ROOT.rglob('*.swift'):
+              if (source.parts[len(ROOT.parts)] not in {'App','Container','Coordinators','Models','Player','Scenes','Services','Views','ViewModels','Utilities'}
+                  or source == shim):
+                  continue
+              current = source.read_text(encoding='utf-8')
+              updated = current
+              for old,newstr in replacements:
+                  # Do not replace inside commented-out lines (basic safe guard).
+                  lines=[]
+                  for line in updated.splitlines(keepends=True):
+                      if line.lstrip().startswith('//'):
+                          lines.append(line)
+                      else:
+                          lines.append(line.replace(old,newstr))
+                  updated = ''.join(lines)
+              if updated != current:
+                  source.write_text(updated,encoding='utf-8')
+                  replacement_stats[str(source.relative_to(ROOT))] = sum(current.count(old) for old,_ in replacements)
+          
+          # Audit: surface unconverted APIs rather than hiding genuine source incompatibilities.
+          watch = (
+              'tabViewBottomAccessory(', 'tabViewBottomAccessoryPlacement', 'tabBarMinimizeBehavior(',
+              'glassEffect(', 'GlassEffectContainer', 'glassEffectID(', '.glassEffectTransition(',
+              'backgroundExtensionEffect(', 'scrollEdgeEffectStyle(', 'ToolbarSpacer(',
+              'safeAreaBar(', 'inlineLargeTitle(', 'toolbarTitleDisplayMode(.inlineLarge)',
+              'navigationSubtitle(', 'sliderThumbVisibility(', 'tabViewSearchActivation(',
+              'tabBarMinimizeBehavior(', 'FoundationModels',
+              'LanguageModelSession', 'SystemLanguageModel', 'Tab(role: .search)',
+              '.buttonStyle(.glass',
+          )
+          findings=[]
+          for source in ROOT.rglob('*.swift'):
+              if 'Carthage' in source.parts or source == shim or '.build' in source.parts: continue
+              for n,line in enumerate(source.read_text(encoding='utf-8').splitlines(),start=1):
+                  if any(x in line for x in watch):
+                      findings.append({'file':str(source.relative_to(ROOT)),'line':n,'source':line.strip()[:220]})
+          report_dir= ROOT/'ios18-reports'
+          report_dir.mkdir(exist_ok=True)
+          (report_dir/'api-audit.json').write_text(json.dumps(findings,ensure_ascii=False,indent=2),encoding='utf-8')
+          (report_dir/'port-summary.txt').write_text(
+              'iOS 18.0 deployment target applied to Mixtape app target only.\n'
+              f'Target substitutions: {count}\n'
+              f'Swift files modified: {len(replacement_stats)}\n'
+              + '\n'.join(f'  {k}: {v} expressions' for k,v in replacement_stats.items())+'\n'
+              f'Potential unconverted API references: {len(findings)}\n'
+              'Music playback, download and services code intentionally unchanged except exact visual expression replacements.\n',
+              encoding='utf-8')
+          print((report_dir/'port-summary.txt').read_text(encoding='utf-8'))
+          print('iOS 18 API audit saved to',report_dir/'api-audit.json')
+          PYPORT
+          python3 "$RUNNER_TEMP/port_ios18.py"
+          grep -Fq 'iOS 18 fallback: render the accessory' Utilities/MixtapeIOS18Compat.swift
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+          cp -R ios18-reports "$LOG_DIR/"
+
+      - name: Preserve music view models and replace only Apple Intelligence paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/patch_mixtape_ios18_music.py" <<'PYMUSIC'
+          #!/usr/bin/env python3
+          """Targeted Mixtape iOS 18 compatibility correction (music-first build).
+
+          Run after the existing visual compat pass and before Swift package resolution.
+          The changes are ephemeral in GitHub Actions; the source repository is not overwritten.
+          This is a build attempt, not a tested compatible release.
+          """
+          from __future__ import annotations
+          from pathlib import Path
+          import re
+          import json
+
+          ROOT = Path.cwd()
+          REPORT = ROOT / "ios18-reports"
+          REPORT.mkdir(exist_ok=True)
+          changes = {}
+
+          def update(rel: str, transform):
+              path = ROOT / rel
+              if not path.is_file():
+                  raise RuntimeError(f"Required source not found: {rel}")
+              before = path.read_text(encoding="utf-8")
+              after = transform(before)
+              if after == before:
+                  raise RuntimeError(f"Expected source change did not occur for: {rel}")
+              path.write_text(after, encoding="utf-8")
+              changes[rel] = (len(before), len(after))
+
+          def replace_once(s: str, old: str, new: str, location: str) -> str:
+              n = s.count(old)
+              if n != 1:
+                  raise RuntimeError(f"Expected precisely one '{old[:60]}' in {location}, found {n}")
+              return s.replace(old, new, 1)
+
+          def patch_project(s: str) -> str:
+              token = "IPHONEOS_DEPLOYMENT_TARGET = 18.0;"
+              if s.count(token) != 2:
+                  raise RuntimeError(f"Expected 2 deployment targets already set to iOS 18, got {s.count(token)}")
+              return s.replace(token, token + '\n\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) IOS18_COMPAT";')
+          update("Mixtape.xcodeproj/project.pbxproj", patch_project)
+
+          def patch_playlist_changes(s: str) -> str:
+              if "@Generable" not in s or "struct PlaylistChanges" not in s:
+                  raise RuntimeError("PlaylistChanges: expected @Generable source was not found")
+              return '''// iOS 18: keep plain playlist-change metadata for view model state, without
+          // importing FoundationModels or generating iOS 26-only macros.
+          #if IOS18_COMPAT
+          import Foundation
+          struct PlaylistChanges: Sendable {
+              let removals: [String]
+              let reorderedIds: [String]?
+              let reasoning: String
+          }
+          #else
+          ''' + s.rstrip() + '\n#endif\n'
+          update("Models/AI/PlaylistChanges.swift", patch_playlist_changes)
+
+          def brace_block_end(s: str, brace_start: int) -> int:
+              """Locate the matching closing brace for a known method body.
+              Handles strings/comments enough for the known Swift method; fails closed.
+              """
+              d = 0; i = brace_start; string = False; triple = False; block_comment = False; line_comment = False; escaped = False
+              while i < len(s):
+                  if s[i] == '\n': line_comment = False
+                  if line_comment: i += 1; continue
+                  if block_comment:
+                      if s.startswith('*/', i): block_comment = False; i += 2; continue
+                      i += 1; continue
+                  if triple:
+                      if s.startswith('"""', i): triple = False; i += 3; continue
+                      i += 1; continue
+                  if string:
+                      if escaped: escaped = False
+                      elif s[i] == '\\': escaped = True
+                      elif s[i] == '"': string = False
+                      i += 1; continue
+                  if s.startswith('//', i): line_comment = True; i += 2; continue
+                  if s.startswith('/*', i): block_comment = True; i += 2; continue
+                  if s.startswith('"""', i): triple = True; i += 3; continue
+                  if s[i] == '"': string = True; i += 1; continue
+                  if s[i] == '{': d += 1
+                  if s[i] == '}':
+                      d -= 1
+                      if d == 0: return i + 1
+                  i += 1
+              raise RuntimeError('Unmatched Swift method body')
+
+          def patch_playlist_vm(s: str) -> str:
+              s = replace_once(s, 'import FoundationModels', '#if !IOS18_COMPAT\nimport FoundationModels\n#endif', 'PlaylistDetailViewModel.swift')
+              match = re.search(r'(?m)^    func refinePlaylist\(prompt: String\) async \{', s)
+              if not match: raise RuntimeError('Missing expected refinePlaylist(prompt:) method')
+              original = s[match.start():brace_block_end(s, match.end() - 1)]
+              if 'FoundationModelsService.shared.createAnalysisSession' not in original:
+                  raise RuntimeError('Original refinePlaylist method has changed, refusing to patch')
+              replacement = '''#if IOS18_COMPAT
+              // Refine is Apple Intelligence-only. Ordinary playlists, queues, music
+              // playback, downloads and library operations remain unchanged.
+              func refinePlaylist(prompt: String) async {
+                  isRefining = false
+                  refineError = "Apple Intelligence requires iOS 26"
+                  playlistChanges = nil
+              }
+          #else
+          ''' + original + '\n#endif'
+              return s[:match.start()] + replacement + s[match.start() + len(original):]
+          update('ViewModels/PlaylistDetailViewModel.swift', patch_playlist_vm)
+
+          def patch_intelligence_modifier(s: str) -> str:
+              original = '@State private var isAvailable = FoundationModelsService.shared.isAvailable'
+              fixed = '''#if IOS18_COMPAT
+              @State private var isAvailable = false
+          #else
+              @State private var isAvailable = FoundationModelsService.shared.isAvailable
+          #endif'''
+              s = replace_once(s, original, fixed, 'IntelligenceModifier.swift')
+              original = 'self.isAvailable = FoundationModelsService.shared.isAvailable'
+              fixed = '''#if IOS18_COMPAT
+                      self.isAvailable = false
+          #else
+                      self.isAvailable = FoundationModelsService.shared.isAvailable
+          #endif'''
+              return replace_once(s, original, fixed, 'IntelligenceModifier.swift notification')
+          update('Utilities/IntelligenceModifier.swift', patch_intelligence_modifier)
+
+          # The previous broad pass erroneously annotated non-AI core classes. Only
+          # isolate declarations that actually live under dedicated AI-only folders.
+          # These imports are still available to compile against with Xcode 26.2,
+          # but their FoundationModels-backed types must not be consumed under iOS 18.
+          AI_FILE = re.compile(r'^(?:Models/AI/|Services/AI/)')
+          DECL = re.compile(r'^(?:(?:public|private|fileprivate|internal|open|final|indirect|nonisolated|static|override)\s+)*(?:struct|class|enum|actor|protocol)\s+\w+')
+          annotated = []
+          for folder in (ROOT/'Models/AI', ROOT/'Services/AI'):
+              if not folder.is_dir(): continue
+              for path in sorted(folder.rglob('*.swift')):
+                  if path.name == 'PlaylistChanges.swift': continue
+                  src = path.read_text(encoding='utf-8')
+                  if not re.search(r'(?m)^import\s+FoundationModels\s*$',src): continue
+                  lines = src.splitlines(keepends=True)
+                  # In this project file-scoped declarations start at column zero;
+                  # nested members are indented. Do not risk modifying nested declarations.
+                  insert = []
+                  for i, line in enumerate(lines):
+                      if DECL.match(line) and not line.lstrip().startswith('//'):
+                          prev = '\n'.join(lines[max(0, i-8):i])
+                          if '@available(iOS 26' not in prev:
+                              insert.append(i)
+                  if insert:
+                      for pos in reversed(insert): lines.insert(pos, '@available(iOS 26.0, *)\n')
+                      path.write_text(''.join(lines),encoding='utf-8')
+                      annotated.append({'path':str(path.relative_to(ROOT)), 'count':len(insert)})
+
+          # Audit FoundationModels references outside AI-only folders to help find other callers.
+          refs=[]
+          for src in ROOT.rglob('*.swift'):
+              relative=src.relative_to(ROOT)
+              if any(p in ('Carthage','SourcePackages','DerivedData','build-ios18-clean') for p in relative.parts): continue
+              for lineno,line in enumerate(src.read_text(encoding='utf-8').splitlines(),1):
+                  if ('FoundationModelsService' in line or 'PlaylistChanges' in line or 'import FoundationModels' in line) and not AI_FILE.match(str(relative)):
+                      refs.append({'file':str(relative),'line':lineno,'code':line.strip()[:160]})
+          REPORT.joinpath('music-first-port.json').write_text(json.dumps({'changes':changes,'annotatedAI':annotated,'references':refs},indent=2,ensure_ascii=False),encoding='utf-8')
+          print('iOS18_COMPAT applied to app target only; kept PlaylistDetailViewModel available')
+          for rel in changes: print('Patched:',rel)
+          print('AI-only declarations annotated:',annotated)
+          print('Non-AI references audited:',len(refs))
+          PYMUSIC
+          python3 "$RUNNER_TEMP/patch_mixtape_ios18_music.py"
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+          cp ios18-reports/music-first-port.json "$LOG_DIR/music-first-port.json"
+
+      - name: Isolate CommandBar and Lyrics AI APIs (retain music features)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/patch_ios18_remaining_ai.py" <<'PY_REMAINING_AI'
+          #!/usr/bin/env python3
+          """Isolate remaining FoundationModels-only features from Mixtape iOS 18.
+          
+          Run AFTER the existing music-first iOS18 compatibility script in the checked-out
+          Mixtape repository and BEFORE the xcodebuild step. This intentionally does not
+          modify the player, download manager, network services or playlist logic.
+          
+          The patches fail closed if the expected source structure changes.
+          """
+          from pathlib import Path
+          import json
+          
+          ROOT = Path.cwd()
+          STATS = {}
+          
+          
+          def one(s, marker, where):
+              count = s.count(marker)
+              if count != 1:
+                  raise RuntimeError(f"{where}: expected exactly one {marker[:70]!r}, got {count}")
+              return s.index(marker)
+          
+          
+          def import_guard(s, where):
+              marker = 'import FoundationModels\n'
+              one(s, marker, where)
+              return s.replace(marker, '#if !IOS18_COMPAT\nimport FoundationModels\n#endif\n', 1)
+          
+          
+          def guard_range(s, start, end, where):
+              i = one(s, start, where)
+              j = one(s, end, where)
+              if j <= i:
+                  raise RuntimeError(f"{where}: guard end comes before start")
+              return s[:i] + '#if !IOS18_COMPAT\n' + s[i:j] + '#endif\n' + s[j:]
+          
+          
+          def save(rel, transform):
+              path = ROOT / rel
+              if not path.is_file():
+                  raise RuntimeError(f"Missing {rel} in checked-out repo")
+              orig = path.read_text(encoding='utf-8')
+              revised = transform(orig)
+              if revised == orig:
+                  raise RuntimeError(f"No change in {rel}")
+              path.write_text(revised, encoding='utf-8')
+              STATS[rel] = {'bytesBefore': len(orig), 'bytesAfter': len(revised)}
+          
+          
+          def patch_command_bar(s):
+              # Full command bar view remains available. On iOS 18 it uses the existing
+              # non-AI direct search and queue code, already implemented in Mixtape.
+              s = import_guard(s, 'CommandBarView')
+              start = '    /// System instructions for the AI session.\n'
+              end = '    /// Fallback to direct search when AI parsing fails.\n'
+              i = one(s, start, 'CommandBarView AI parser')
+              j = one(s, end, 'CommandBarView AI parser')
+              if j <= i:
+                  raise RuntimeError('CommandBarView parser start/end out of order')
+              direct_fallback = '''#else
+              // iOS 18: use Mixtape's existing ordinary YouTube Music search instead
+              // of FoundationModels' natural-language interpretation.
+              private func processCommand() async {
+                  let query = self.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                  guard !query.isEmpty else { return }
+                  self.isProcessing = true
+                  self.errorMessage = nil
+                  self.resultMessage = nil
+                  await self.fallbackDirectSearch(query: query)
+                  self.isProcessing = false
+              }
+          #endif
+          '''
+              s = s[:i] + '#if !IOS18_COMPAT\n' + s[i:j] + direct_fallback + s[j:]
+              s = guard_range(s,
+                  '    private func executeIntent(_ intent: MusicIntent) async {\n',
+                  '    private func playSearchResult(query: String, description: String = "") async {\n',
+                  'CommandBarView AI structured intent')
+              s = guard_range(s,
+                  '    // MARK: - Content Routing\n',
+                  '\n}\n\n// MARK: - SuggestionChip\n',
+                  'CommandBarView AI content routing')
+              return s
+          
+          
+          def patch_lyrics(s):
+              s = import_guard(s, 'LyricsView')
+              # State generated by @Generable is only used by AI explanation, not the
+              # user's ordinary lyrics display.
+              i = one(s, '    // AI explanation state\n', 'LyricsView state')
+              j_marker = '    private let logger = DiagnosticsLogger.ai\n'
+              j = one(s, j_marker, 'LyricsView state')
+              if j <= i:
+                  raise RuntimeError('LyricsView state block misordered')
+              s = s[:i] + '#if !IOS18_COMPAT\n' + s[i:j] + '#endif\n' + s[j:]
+              reset_start = '                // Reset explanation when track changes\n'
+              reset_end = '                Task {\n                    await self.loadLyrics(for: videoId)\n'
+              i = one(s, reset_start, 'LyricsView onChange')
+              j = one(s, reset_end, 'LyricsView onChange')
+              if j <= i:
+                  raise RuntimeError('LyricsView onChange block misordered')
+              s = s[:i] + '#if !IOS18_COMPAT\n' + s[i:j] + '#endif\n' + s[j:]
+              s = guard_range(s,
+                  '    private func explanationSection(_ summary: LyricsSummary) -> some View {\n',
+                  '    private var noLyricsView: some View {\n',
+                  'LyricsView AI-only explanation presentation')
+              return s
+          
+          
+          save('Views/CommandBarView.swift', patch_command_bar)
+          save('Views/LyricsView.swift', patch_lyrics)
+          report_dir = ROOT / 'ios18-reports'
+          report_dir.mkdir(exist_ok=True)
+          (report_dir / 'remaining-ai-patch.json').write_text(json.dumps(STATS, indent=2), encoding='utf-8')
+          print('iOS 18 remaining-AI patch applied; ordinary lyrics and direct music search kept:')
+          for rel in STATS:
+              print(' -', rel)
+          PY_REMAINING_AI
+          python3 "$RUNNER_TEMP/patch_ios18_remaining_ai.py"
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+          cp ios18-reports/remaining-ai-patch.json "$LOG_DIR/remaining-ai-patch.json"
+      - name: Skip iOS 26 FoundationModels warmup on iOS 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_WARMUP'
+          from pathlib import Path
+          import re
+
+          p = Path('Coordinators/App/AppCoordinator.swift')
+          source = p.read_text(encoding='utf-8')
+          pattern = re.compile(r'(?m)^([ \t]*)await FoundationModelsService\.shared\.warmup\(\)[ \t]*$')
+          matches = list(pattern.finditer(source))
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one unguarded FoundationModels warmup call, found {len(matches)}')
+          match = matches[0]
+          indent = match.group(1)
+          original = match.group(0)
+          replacement = (f'{indent}#if !IOS18_COMPAT\n'
+                         f'{indent}await FoundationModelsService.shared.warmup()\n'
+                         f'{indent}#endif')
+          p.write_text(source[:match.start()] + replacement + source[match.end():], encoding='utf-8')
+          print('Guarded FoundationModelsService.shared.warmup() in AppCoordinator.setup().')
+          PY_WARMUP
+          git diff -- Coordinators/App/AppCoordinator.swift > "$LOG_DIR/appcoordinator-warmup.patch" || true
+
+      - name: Remove iOS 26-only slider thumb modifier for iOS 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_SLIDER'
+          from pathlib import Path
+          import re
+
+          source = Path('Player/PlayerBarCover.swift')
+          original = source.read_text(encoding='utf-8')
+          pattern = re.compile(r'(?m)^[ \t]*\.sliderThumbVisibility\(\.hidden\)[ \t]*\r?\n')
+          patched, count = pattern.subn('', original)
+          if count != 1:
+              raise SystemExit(
+                  f'Expected exactly one .sliderThumbVisibility(.hidden) in '
+                  f'{source}, found {count}. Source might have changed.'
+              )
+          source.write_text(patched, encoding='utf-8')
+          print(f'Removed {count} iOS 26-only visual modifier from {source}.')
+          PY_SLIDER
+          git diff -- Player/PlayerBarCover.swift > "$LOG_DIR/player-slider.patch" || true
+
+      - name: Replace iOS 26 search top bar with iOS 18 safe-area inset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_SEARCH_BAR'
+          from pathlib import Path
+
+          source = Path('Views/SearchContentView.swift')
+          if not source.is_file():
+              raise SystemExit(f'Source file not found: {source}')
+          original = source.read_text(encoding='utf-8')
+          old = '.safeAreaBar(edge: .top) {'
+          new = '.safeAreaInset(edge: .top) {'
+          count = original.count(old)
+          if count != 1:
+              raise SystemExit(
+                  f'Expected exactly one {old!r} in {source}, found {count}. '
+                  'Source may have changed; refusing a potentially unsafe patch.'
+              )
+          # Retain the entire existing filter chips closure and search logic.
+          updated = original.replace(old, new, 1)
+          assert updated.count(new) == original.count(new) + 1
+          source.write_text(updated, encoding='utf-8')
+          print(f'Replaced {old} with {new} in {source}.')
+          PY_SEARCH_BAR
+          git diff -- Views/SearchContentView.swift > "$LOG_DIR/search-top-bar.patch" || true
+
+      - name: Backport remaining iOS 26 visual modifiers and audit complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_IOS18_EXTRA'
+          from pathlib import Path
+          import json
+          import re
+          import subprocess
+
+          root = Path.cwd()
+          reports = root / 'ios18-reports'
+          reports.mkdir(exist_ok=True)
+          changes = {}
+          scan_roots = {'App', 'Container', 'Coordinators', 'Models', 'Player',
+                        'Scenes', 'Services', 'Utilities', 'ViewModels', 'Views'}
+
+          # iOS 26 introduced .inlineLarge. .large has existed since iOS 17.
+          # This preserves a native navigation title without iOS 26 UI APIs.
+          # The exact API is also used by some Mixtape custom title helpers.
+          inline_title = '.toolbarTitleDisplayMode(.inlineLarge)'
+          older_title = '.toolbarTitleDisplayMode(.large)'
+
+          for src in sorted(root.rglob('*.swift')):
+              rel = src.relative_to(root)
+              if not rel.parts or rel.parts[0] not in scan_roots:
+                  continue
+              if src.name == 'MixtapeIOS18Compat.swift':
+                  continue
+              before = src.read_text(encoding='utf-8')
+              after = before
+              # Do not rewrite commented-out lines; only replace exact known
+              # modifiers and preserve the complete SwiftUI view closures.
+              lines = []
+              for line in after.splitlines(keepends=True):
+                  if line.lstrip().startswith('//'):
+                      lines.append(line)
+                      continue
+                  line = line.replace(inline_title, older_title)
+                  # ToolbarItemPlacement.largeTitle and topBarPinnedTrailing are iOS 26-only.
+                  line = line.replace('placement: .largeTitle', 'placement: .topBarLeading')
+                  line = line.replace('placement: .topBarPinnedTrailing', 'placement: .topBarTrailing')
+                  # New in iOS 26: GlassEffectContainer is a view layout wrapper.
+                  # Using Group leaves the children and view state untouched.
+                  line = re.sub(r'\bGlassEffectContainer\s*(?:\(spacing:\s*[^()]*\))?\s*\{',
+                                'Group {', line)
+                  # New iOS 26 glass variants have an iOS 18 material fallback.
+                  line = re.sub(r'\.glassEffect\(\.(?:regular|clear)\)',
+                                '.mixtapeCompatGlassEffect()', line)
+                  # iOS 26 safeAreaBar; safeAreaInset has been supported since iOS 15.
+                  line = re.sub(r'\.safeAreaBar\(edge: \.(top|bottom)\)',
+                                r'.safeAreaInset(edge: .\1)', line)
+                  # The modifier is decoration only, not required for sliders.
+                  line = re.sub(r'^([ \t]*)\.sliderThumbVisibility\(\.hidden\)\s*$',
+                                r'', line.rstrip('\r\n')) + ('\n' if line.endswith('\n') else '')
+                  # These are *visual-only* one-line modifiers / toolbar spacers
+                  # added in iOS 26; drop them when building for iOS 18.
+                  # Do not touch multiline expressions or model/state methods.
+                  stripped = line.strip()
+                  decorative = (
+                      r'\.glassEffectID\([^()]*\)',
+                      r'\.glassEffectTransition\([^()]*\)',
+                      r'\.backgroundExtensionEffect\([^()]*\)',
+                      r'\.scrollEdgeEffectStyle\([^()]*\)',
+                      r'\.tabViewBottomAccessoryPlacement\([^()]*\)',
+                      r'\.tabViewSearchActivation\([^()]*\)',
+                      r'\.navigationSubtitle\([^()]*\)',
+                      r'ToolbarSpacer\([^()]*\)',
+                  )
+                  if any(re.fullmatch(pattern, stripped) for pattern in decorative):
+                      line = ''
+                  lines.append(line)
+              after = ''.join(lines)
+              if after != before:
+                  src.write_text(after, encoding='utf-8')
+                  changes[str(rel)] = {'oldBytes': len(before), 'newBytes': len(after)}
+
+          # Capture *all* remaining patterns; do not accidentally rewrite or
+          # delete stateful/semantic APIs such as tab search or content routing.
+          watch = [
+              'safeAreaBar(', 'sliderThumbVisibility(', 'toolbarTitleDisplayMode(.inlineLarge)',
+              'backgroundExtensionEffect(', 'scrollEdgeEffectStyle(',
+              'tabViewBottomAccessoryPlacement(', 'tabViewSearchActivation(',
+              'GlassEffectContainer(', 'placement: .largeTitle',
+              'placement: .topBarPinnedTrailing', 'placement: .largeSubtitle',
+              '.glassEffect(', '.glassEffectID(',
+              '.glassEffectTransition(', 'ToolbarSpacer(', 'navigationSubtitle(',
+              'LanguageModelSession(', 'SystemLanguageModel(', 'FoundationModelsService',
+          ]
+          remaining = []
+          for src in sorted(root.rglob('*.swift')):
+              rel = src.relative_to(root)
+              if not rel.parts or rel.parts[0] not in scan_roots or src.name == 'MixtapeIOS18Compat.swift':
+                  continue
+              for n, line in enumerate(src.read_text(encoding='utf-8').splitlines(), 1):
+                  if line.lstrip().startswith('//'):
+                      continue
+                  matches = [pattern for pattern in watch if pattern in line]
+                  if matches:
+                      remaining.append({'path': str(rel), 'line': n, 'apis': matches,
+                                        'text': line.strip()[:250]})
+          (reports / 'final-ios18-audit.json').write_text(
+              json.dumps({'rewrites': changes, 'potentialReferences': remaining},
+                         ensure_ascii=False, indent=2), encoding='utf-8')
+          print(f'Additional backports: {len(changes)} file(s)')
+          print(f'Audit: {len(remaining)} potentially incompatible references; '
+                'these may include code guarded by #if and @available')
+          for item in remaining[:60]:
+              print(f'::warning file={item["path"]},line={item["line"]}::Check iOS 18 compatibility: {", ".join(item["apis"])}')
+          PY_IOS18_EXTRA
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+          cp ios18-reports/final-ios18-audit.json "$LOG_DIR/final-ios18-audit.json"
+
+      - name: Audit SwiftUI environment at startup (iOS 18 crash diagnostics)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_ENV_AUDIT'
+          from pathlib import Path
+          import json
+          import re
+
+          root = Path.cwd()
+          report_dir = root / 'ios18-reports'
+          report_dir.mkdir(exist_ok=True)
+          scan_roots = {'App', 'Container', 'Coordinators', 'Models', 'Player',
+                        'Scenes', 'Services', 'Utilities', 'ViewModels', 'Views'}
+          entries = {'typedEnvironmentReads': [], 'environmentObjectReads': [],
+                     'environmentInjections': [], 'startupCandidates': []}
+          typed_read = re.compile(r'@Environment\s*\(\s*([A-Za-z_]\w*)\.self\s*\)')
+          env_obj = re.compile(r'@EnvironmentObject\b')
+          injection = re.compile(r'\.environment(?:Object)?\s*\(')
+          startup = re.compile(r'\bWindowGroup\b|\b@main\b|\bTabView\s*\{|'
+                               r'\bmixtapeCompatTabViewBottomAccessory\s*\{|'
+                               r'\bsafeAreaInset\s*\(')
+          for path in sorted(root.rglob('*.swift')):
+              rel = path.relative_to(root)
+              if not rel.parts or rel.parts[0] not in scan_roots:
+                  continue
+              if any(p in {'Carthage', '.build', 'DerivedData', 'SourcePackages'} for p in rel.parts):
+                  continue
+              for n, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  if line.lstrip().startswith('//'):
+                      continue
+                  loc = {'file': str(rel), 'line': n, 'code': line.strip()[:250]}
+                  typed = typed_read.findall(line)
+                  for name in typed:
+                      entries['typedEnvironmentReads'].append(dict(loc, type=name))
+                  if env_obj.search(line):
+                      entries['environmentObjectReads'].append(loc)
+                  if injection.search(line):
+                      entries['environmentInjections'].append(loc)
+                  if startup.search(line):
+                      entries['startupCandidates'].append(loc)
+          (report_dir / 'swiftui-environment-audit.json').write_text(
+              json.dumps(entries, indent=2, ensure_ascii=False), encoding='utf-8')
+          lines = [
+              'Mixtape iOS 18: SwiftUI environment diagnostics',
+              'Observed iPhone crash: SIGTRAP at SwiftUICore EnvironmentValues.subscript.getter',
+              'This is only an audit; static scanning cannot prove whether injection reaches a view.',
+              '',
+          ]
+          captions = {
+              'typedEnvironmentReads': '@Environment(SomeType.self) reads (check each ancestor)',
+              'environmentObjectReads': '@EnvironmentObject reads (check each ancestor)',
+              'environmentInjections': '.environment(...) and .environmentObject(...) calls',
+              'startupCandidates': 'Root view / TabView / safe-area presentation candidates',
+          }
+          for key, label in captions.items():
+              lines.append(f'{label}: {len(entries[key])}')
+              for item in entries[key]:
+                  lines.append(f'  {item["file"]}:{item["line"]}: {item["code"]}')
+              lines.append('')
+          path = report_dir / 'swiftui-environment-audit.txt'
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print('\n'.join(lines[:100]))
+          PY_ENV_AUDIT
+          cp ios18-reports/swiftui-environment-audit.json "$LOG_DIR/"
+          cp ios18-reports/swiftui-environment-audit.txt "$LOG_DIR/"
+
+      - name: Capture player SwiftUI environment context for the iOS 18 crash
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CRASH_CONTEXT'
+          from pathlib import Path
+          import re
+          import json
+
+          root=Path.cwd()
+          needles=('PlayerBarAppearance', 'RecessedMaterialBlurSetting',
+                   '@Environment(', '@EnvironmentObject', '.environment(',
+                   '.environmentObject(', 'mixtapeCompatTabViewBottomAccessory',
+                   'tabViewBottomAccessory', 'PlayerBarCover')
+          excluded={'Carthage', '.build', 'build-ios18-clean', '.git', 'SourcePackages'}
+          fragments=[]
+          for path in sorted(root.rglob('*.swift')):
+              rel=path.relative_to(root)
+              if set(rel.parts) & excluded:
+                  continue
+              lines=path.read_text(encoding='utf-8',errors='replace').splitlines()
+              wanted=set()
+              for i,line in enumerate(lines):
+                  if any(key in line for key in needles):
+                      for j in range(max(0,i-7),min(len(lines),i+8)):
+                          wanted.add(j)
+              if not wanted: continue
+              shown=[]
+              last=-2
+              for j in sorted(wanted):
+                  if j>last+1:shown.append('  ...')
+                  shown.append(f'{j+1:4}: {lines[j]}')
+                  last=j
+              fragments.append({'file':str(rel),'lines':shown})
+          report=root/'ios18-reports/player-environment-context.txt'
+          report.parent.mkdir(exist_ok=True)
+          report.write_text('Crash indication: environment value missing on iOS 18.6.2\n'
+                            'Crash thread references PlayerBarAppearance and RecessedMaterialBlurSetting.\n'
+                            'Mini-player iOS 18 fallback is disabled for isolation in this build.\n'
+                            'This list does not prove which object is missing.\n\n'
+                            + '\n\n'.join('### '+x['file']+'\n'+'\n'.join(x['lines']) for x in fragments)
+                            + '\n',encoding='utf-8')
+          (root/'ios18-reports/player-environment-context.json').write_text(
+              json.dumps(fragments,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('Matching Swift sources:',len(fragments))
+          for f in fragments: print('  -',f['file'])
+          PY_CRASH_CONTEXT
+          cp ios18-reports/player-environment-context.txt "$LOG_DIR/"
+          cp ios18-reports/player-environment-context.json "$LOG_DIR/"
+
+      - name: Restore player bar environment and surface real audio / search failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_PLAYER_DEBUG'
+          from pathlib import Path
+
+          def patch(path, before, after):
+              f = Path(path)
+              data = f.read_text(encoding='utf-8')
+              count = data.count(before)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {before[:80]!r}')
+              f.write_text(data.replace(before, after, 1), encoding='utf-8')
+              print('Patched', path)
+
+          # The iOS 26 tab accessory and the iOS 18 safe-area fallback can
+          # differ in environment propagation. Inject at the consumer itself.
+          patch('Coordinators/App/AppCoordinatorView.swift',
+              'PlayerBar(viewModel: coordinator.playerViewModel, actualColorScheme: colorScheme, showFullscreenPlayer: $showFullscreenPlayer)\n                .matchedTransitionSource',
+              'PlayerBar(viewModel: coordinator.playerViewModel, actualColorScheme: colorScheme, showFullscreenPlayer: $showFullscreenPlayer)\n                .environment(playerBarAppearance)\n                .matchedTransitionSource')
+
+          # Expose the underlying player error on screen without Xcode logs.
+          patch('Player/PlayerViewModel.swift',
+              'var currentTrack: Song? { playerManager.currentTrack }',
+              'var currentTrack: Song? { playerManager.currentTrack }\n    var playbackError: String? {\n        if case let .error(message) = playerManager.state { return message }\n        return nil\n    }')
+          patch('Player/PlayerBar.swift',
+              'if let display = viewModel.currentTrack?.artistsDisplay, !display.isEmpty {',
+              'if let playbackError = viewModel.playbackError {\n                            Text(playbackError)\n                                .font(.caption2)\n                                .foregroundStyle(.red)\n                                .lineLimit(3)\n                        }\n\n                        if let display = viewModel.currentTrack?.artistsDisplay, !display.isEmpty {')
+
+          # Stop pretending a failure was a track end. Retain the error state
+          # so it can be examined instead of skipping the whole queue.
+          patch('Services/Player/YTMusicNativePlayer.swift',
+              'self.onError?(error)\n                // Auto-skip to next track when playback fails\n                self.onTrackEnded?()',
+              'self.onError?(error)\n                // iOS 18 diagnostic: do not auto-skip on a playback failure')
+          patch('Services/Player/YTMusicNativePlayer.swift',
+              'self.logger.error("[Player: Native] All clients failed, skipping track. Error: \(error.localizedDescription)")\n            onStateChange?(.ended)\n            onTrackEnded?()',
+              'self.logger.error("[Player: Native] All clients failed. Error: \(error.localizedDescription)")\n            onStateChange?(.error(error.localizedDescription))\n            onError?(error)')
+          patch('Services/Player/VLCMusicPlayer.swift',
+              'logger.error("[Player: VLC] All clients failed, skipping track. Error: \(error.localizedDescription)")\n            onStateChange?(.error(error.localizedDescription))\n            onError?(error)\n            onTrackEnded?()',
+              'logger.error("[Player: VLC] All clients failed. Error: \(error.localizedDescription)")\n            onStateChange?(.error(error.localizedDescription))\n            onError?(error)')
+
+          # Do not silently misreport unexpected JSON as zero search hits.
+          patch('Services/API/YTMusicClient.swift',
+              'let data = try await request("search", body: body)\n        let response = SearchResponseParser.parse(data)',
+              'let data = try await request("search", body: body)\n        guard let contents = data["contents"] as? [String: Any],\n              contents["tabbedSearchResultsRenderer"] != nil else {\n            throw YTMusicError.parseError(message: "Unexpected YouTube Music search response format")\n        }\n        let response = SearchResponseParser.parse(data)')
+
+          # A successful HTTP response parsed as 0 results should not be
+          # confused with failure to reach the API. Log response shape only.
+          patch('Services/API/YTMusicClient.swift',
+              'let response = SearchResponseParser.parse(data)\n        self.logger.info("Search found',
+              'let response = SearchResponseParser.parse(data)\n        if response.isEmpty {\n            self.logger.warning("Search parser returned 0 items; response root keys: \(data.keys.sorted().joined(separator: ","))")\n        }\n        self.logger.info("Search found')
+          PY_PLAYER_DEBUG
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+
+      - name: Show per-client stream failures and full playback errors on iPhone
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_DEEP_DIAG'
+          from pathlib import Path
+          
+          def patch(path, before, after):
+              file = Path(path)
+              src = file.read_text(encoding='utf-8')
+              count = src.count(before)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, got {count}: {before[:100]!r}')
+              file.write_text(src.replace(before, after, 1), encoding='utf-8')
+              print('Deep diagnostics patched:', path)
+          
+          # Preserve the outcome of EACH YouTube stream profile, not just the final error.
+          patch('Services/Player/StreamFetcher.swift',
+                '        var lastError: Error?\n\n        for (index, client) in StreamClient.fallbackClients.enumerated() {',
+                '        var lastError: Error?\n        var attemptFailures: [String] = []\n\n        for (index, client) in StreamClient.fallbackClients.enumerated() {')
+          patch('Services/Player/StreamFetcher.swift',
+                '                    logger.warning("[StreamFetcher] No suitable format found, trying next client...")\n                    continue',
+                '                    let diagnosis = "\\(client.name): no directly usable audio format (playability=\\(playerResponse.playabilityStatus.status), audio URLs=\\(playerResponse.audioFormats.count))"\n                    attemptFailures.append(diagnosis)\n                    logger.warning("[StreamFetcher] No suitable format: \\(diagnosis)")\n                    continue'.replace('\\(', '\\('))
+          patch('Services/Player/StreamFetcher.swift',
+                '                logger.warning("[StreamFetcher] Client \\(client.name) failed: \\(error.localizedDescription)")\n                lastError = error',
+                '                let nsError = error as NSError\n                let diagnosis = "\\(client.name): \\(error.localizedDescription) [\\(nsError.domain):\\(nsError.code)]"\n                attemptFailures.append(String(diagnosis.prefix(220)))\n                logger.warning("[StreamFetcher] Client failed: \\(diagnosis)")\n                lastError = error')
+          patch('Services/Player/StreamFetcher.swift',
+                '        return .failure(lastError ?? YTMusicError.apiError(message: "All clients failed", code: nil))',
+                '        let details = attemptFailures.isEmpty ? (lastError?.localizedDescription ?? "No direct audio URL") : attemptFailures.joined(separator: " | ")\n        return .failure(YTMusicError.playbackError(message: "All stream profiles failed: \\(details)"))')
+          
+          # The PlayerManager callback can otherwise replace the error from the native
+          # player with an unspecific localizedDescription. Include NSError metadata.
+          patch('Services/Player/PlayerManager.swift',
+                '            self?.logger.error("Audio player error: \\(error.localizedDescription)")\n            self?.state = .error(error.localizedDescription)',
+                '            let nsError = error as NSError\n            let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError\n            let underlyingDetails = underlying.map { " | underlying: \\($0.domain):\\($0.code)" } ?? ""\n            let details = "\\(error.localizedDescription) [\\(nsError.domain):\\(nsError.code)]\\(underlyingDetails)"\n            self?.logger.error("Audio player error: \\(details)")\n            self?.state = .error(details)')
+          
+          # Replace the tiny, truncated label with a full, shareable diagnostic sheet.
+          patch('Player/PlayerBar.swift',
+                '    @Environment(PlayerBarAppearance.self) private var appearance',
+                '    @Environment(PlayerBarAppearance.self) private var appearance\n    @State private var showErrorDetails = false')
+          patch('Player/PlayerBar.swift',
+                '''if let playbackError = viewModel.playbackError {
+                                      Text(playbackError)
+                                          .font(.caption2)
+                                          .foregroundStyle(.red)
+                                          .lineLimit(3)
+                                  }''',
+                '''if viewModel.playbackError != nil {
+                                      Button {
+                                          showErrorDetails = true
+                                      } label: {
+                                          Text("Erreur audio : afficher les détails")
+                                              .font(.caption2)
+                                              .foregroundStyle(.red)
+                                              .lineLimit(2)
+                                      }
+                                      .buttonStyle(.plain)
+                                  }''')
+          patch('Player/PlayerBar.swift',
+                '''        .padding(.horizontal, 16)
+                  .padding(.vertical, 10)
+              }
+          }
+          
+          
+          #endif''',
+                '''        .padding(.horizontal, 16)
+                  .padding(.vertical, 10)
+                  .sheet(isPresented: $showErrorDetails) {
+                      NavigationStack {
+                          ScrollView {
+                              Text(viewModel.playbackError ?? "Aucune erreur audio actuelle")
+                                  .font(.system(.body, design: .monospaced))
+                                  .textSelection(.enabled)
+                                  .frame(maxWidth: .infinity, alignment: .leading)
+                                  .padding()
+                          }
+                          .navigationTitle("Diagnostic audio")
+                          .toolbar {
+                              ToolbarItem(placement: .cancellationAction) {
+                                  Button("Fermer") { showErrorDetails = false }
+                              }
+                              ToolbarItem(placement: .confirmationAction) {
+                                  ShareLink(item: viewModel.playbackError ?? "Aucune erreur audio") {
+                                      Label("Partager", systemImage: "square.and.arrow.up")
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          
+          
+          #endif''')
+          
+          # Search: show the actual network/parser error rather than converting it to a
+          # localized generic label. Never include cookies, authorization or signed URLs.
+          patch('ViewModels/SearchViewModel.swift',
+                '                self.loadingState = .error(LoadingError(from: error))',
+                '                let nsError = error as NSError\n                let detail = "\\(error.localizedDescription) [\\(nsError.domain):\\(nsError.code)]"\n                self.loadingState = .error(LoadingError(message: detail))')
+          patch('Services/API/YTMusicClient.swift',
+                '        if response.isEmpty {\n            self.logger.warning("Search parser returned 0 items; response root keys: \\(data.keys.sorted().joined(separator: ","))")\n        }',
+                '        if response.isEmpty && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {\n            let contentsKeys = (data["contents"] as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "none"\n            throw YTMusicError.parseError(message: "Search returned no parsed results. contents keys: \\(contentsKeys)")\n        }')
+          PY_DEEP_DIAG
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+
+      - name: Probe YouTube CDN and use supported AVPlayer User-Agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CDN403'
+          from pathlib import Path
+
+
+          def patch(path, before, after):
+              p = Path(path)
+              source = p.read_text(encoding='utf-8')
+              count = source.count(before)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected 1 source match, got {count}: {before[:85]!r}')
+              p.write_text(source.replace(before, after, 1), encoding='utf-8')
+              print('HTTP403 patch:', path)
+
+
+          # The API may return a stream URL even if the CDN rejects a media download.
+          # Probe a tiny byte range and try the next profile if the URL is unusable.
+          patch('Services/Player/StreamFetcher.swift',
+                '                // Get duration from API\n',
+                r'''                // Verify CDN access before committing to this stream profile.
+                          // This runs on the iPhone, not on the GitHub Actions runner.
+                          var cdnStatus = try await probeAudioCDN(streamURL, client: client)
+                          if cdnStatus == 403 {
+                              // Some freshly issued YouTube URLs reject immediate requests.
+                              logger.warning("[StreamFetcher] \(client.name): immediate CDN 403; retry after 5s")
+                              try await Task.sleep(for: .seconds(5))
+                              cdnStatus = try await probeAudioCDN(streamURL, client: client)
+                          }
+                          guard (200 ..< 300).contains(cdnStatus) else {
+                              let diagnosis = "\(client.name): audio CDN HTTP \(cdnStatus) (player API returned a URL but the CDN rejected it)"
+                              attemptFailures.append(diagnosis)
+                              logger.warning("[StreamFetcher] \(diagnosis)")
+                              continue
+                          }
+                          logger.info("[StreamFetcher] \(client.name): CDN probe HTTP \(cdnStatus), starting player")
+
+                          // Get duration from API
+          ''')
+
+          patch('Services/Player/StreamFetcher.swift',
+                '    // MARK: - Private Methods\n',
+                r'''    // Inspect status without downloading entire tracks or revealing signed URLs.
+              private func probeAudioCDN(_ url: URL, client: StreamClient) async throws -> Int {
+                  var request = URLRequest(url: url)
+                  request.httpMethod = "GET"
+                  request.timeoutInterval = 12
+                  request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+                  request.setValue(client.userAgent, forHTTPHeaderField: "User-Agent")
+                  request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+                  request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+                  let (_, response) = try await URLSession.shared.bytes(for: request)
+                  guard let http = response as? HTTPURLResponse else {
+                      throw YTMusicError.playbackError(message: "CDN probe received no HTTP response")
+                  }
+                  return http.statusCode
+              }
+
+              // MARK: - Private Methods
+          ''')
+
+          # Apple says AVURLAssetHTTPHeaderFieldsKey is unsupported. Retain only the
+          # supported User-Agent option, using its documented raw key for compatibility.
+          patch('Services/Player/NativePlayerSession.swift',
+                '''        // Create asset with headers if provided
+                  let asset: AVURLAsset
+                  if let headers = headers {
+                      asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+                  } else {
+                      asset = AVURLAsset(url: url)
+                  }
+          ''',
+                '''        // Use Apple's supported AVURLAssetHTTPUserAgentKey option.
+                  let asset: AVURLAsset
+                  if let userAgent = headers?["User-Agent"] {
+                      asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPUserAgentKey": userAgent])
+                  } else {
+                      asset = AVURLAsset(url: url)
+                  }
+          ''')
+          PY_CDN403
+          git diff > "$LOG_DIR/ios18-source-changes.patch" || true
+
+      - name: Enable interactive Web Player on iOS 18 as streaming fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_WEB_FALLBACK'
+          from pathlib import Path
+          
+          
+          def patch(path: str, before: str, after: str) -> None:
+              f = Path(path)
+              src = f.read_text(encoding='utf-8')
+              n = src.count(before)
+              if n != 1:
+                  raise SystemExit(f'{path}: expected 1 match for iOS Web Player fallback, found {n}')
+              f.write_text(src.replace(before, after, 1), encoding='utf-8')
+              print('Enabled Web Player fallback in', path)
+          
+          # Keep direct native and VLC playback available, but offer a third player
+          # that uses the actual YouTube Music website (rather than googlevideo URLs).
+          patch('Models/AudioPlayerType.swift',
+                '''    /// iOS does not support WebView player.
+              static var availableCases: [AudioPlayerType] {
+                  #if os(iOS)
+                  [.native, .vlc]
+          ''',
+                '''    /// iOS 18 fallback: Web Player uses the interactive YouTube Music site.
+              static var availableCases: [AudioPlayerType] {
+                  #if os(iOS)
+                  [.native, .vlc, .webView]
+          ''')
+          
+          # Make the Web Player's WKWebView genuinely visible and tappable on iOS.
+          # The source app had a 0.01 x 0.01, opacity=0.001 webview that could not
+          # receive the user interaction required for starting playback.
+          patch('Coordinators/App/AppCoordinatorView.swift',
+                '''    @ViewBuilder
+              private func miniPlayerOverlay(videoId: String) -> some View {
+                  let showMiniPlayer = playerManager.showMiniPlayer
+          
+                  PersistentPlayerView(
+                      videoId: videoId,
+                      isExpanded: showMiniPlayer,
+                      playerManager: coordinator.playerManager,
+                      webKitManager: coordinator.webKitManager
+                  )
+                      .frame(
+                          width: 0.01,
+                          height: 0.01
+                      )
+                      .clipShape(RoundedRectangle(cornerRadius: 6))
+                      .opacity(showMiniPlayer ? 0.95 : 0)
+                      .allowsHitTesting(showMiniPlayer)
+                      .opacity(0.001)
+              }
+          ''',
+                '''    @ViewBuilder
+              private func miniPlayerOverlay(videoId: String) -> some View {
+                  let showMiniPlayer = playerManager.showMiniPlayer
+                  #if os(iOS)
+                  ZStack {
+                      if showMiniPlayer {
+                          Color.black.opacity(0.58).ignoresSafeArea()
+                      }
+                      VStack(spacing: 0) {
+                          if showMiniPlayer {
+                              HStack {
+                                  Text("YouTube Music – Web Player")
+                                      .font(.headline)
+                                  Spacer()
+                                  Button("Fermer") { playerManager.miniPlayerDismissed() }
+                                      .buttonStyle(.bordered)
+                              }
+                              .padding(12)
+                              Text("Appuyez sur Lecture dans la page pour autoriser l'audio sur iOS.")
+                                  .font(.caption)
+                                  .foregroundStyle(.secondary)
+                                  .padding(.horizontal, 12)
+                                  .padding(.bottom, 8)
+                          }
+                          PersistentPlayerView(
+                              videoId: videoId,
+                              isExpanded: showMiniPlayer,
+                              playerManager: coordinator.playerManager,
+                              webKitManager: coordinator.webKitManager
+                          )
+                          .frame(height: showMiniPlayer ? 540 : 1)
+                          .opacity(showMiniPlayer ? 1 : 0.001)
+                          .allowsHitTesting(showMiniPlayer)
+                      }
+                      .frame(maxWidth: .infinity)
+                      .background(showMiniPlayer ? Color(uiColor: .systemBackground) : .clear)
+                      .clipShape(RoundedRectangle(cornerRadius: 12))
+                      .padding(showMiniPlayer ? 12 : 0)
+                  }
+                  .frame(maxWidth: .infinity, maxHeight: .infinity)
+                  .allowsHitTesting(showMiniPlayer)
+                  #else
+                  PersistentPlayerView(
+                      videoId: videoId,
+                      isExpanded: showMiniPlayer,
+                      playerManager: coordinator.playerManager,
+                      webKitManager: coordinator.webKitManager
+                  )
+                      .frame(width: 0.01, height: 0.01)
+                      .clipShape(RoundedRectangle(cornerRadius: 6))
+                      .opacity(showMiniPlayer ? 0.95 : 0)
+                      .allowsHitTesting(showMiniPlayer)
+                      .opacity(0.001)
+                  #endif
+              }
+          ''')
+          
+          # When switching from a failed native player to Web Player, always show
+          # the browser even if the previous player state was .error (isPlaying=false).
+          # Avoid calling loadVideo before PersistentPlayerView creates the WKWebView.
+          patch('Services/Player/PlayerManager.swift',
+                '''        // If we had a track playing, reload it on the new player
+                  if let videoId = currentVideoId, wasPlaying {
+                      self.logger.info("Reloading current track on new player")
+                      await newPlayer.loadVideo(videoId: videoId)
+                  }
+          ''',
+                '''        // For iOS Web Player, the browser must exist and be interactive
+                  // before playback can start. It also works after the native player failed.
+                  if playerType == .webView, let videoId = currentVideoId {
+                      pendingPlayVideoId = videoId
+                      hasUserInteractedThisSession = false
+                      showMiniPlayer = true
+                      self.logger.info("Presenting interactive Web Player for selected track")
+                  } else if let videoId = currentVideoId, wasPlaying {
+                      self.logger.info("Reloading current track on new player")
+                      await newPlayer.loadVideo(videoId: videoId)
+                  }
+          ''')
+          PY_WEB_FALLBACK
+
+      - name: Prefer tested CasePaths macros version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('Mixtape.xcodeproj/project.pbxproj')
+          t=p.read_text()
+          a,n=re.subn(r'(repositoryURL = "https://github\.com/pointfreeco/swift-case-paths";\s*requirement = \{\s*kind = upToNextMajorVersion;\s*minimumVersion = )1\.7\.2(;)',r'\g<1>1.10.0\2',t)
+          if n not in (0,1): raise SystemExit('Unexpected CasePaths declaration count: '+str(n))
+          if n: p.write_text(a)
+          PY
+          # Re-resolve old lockfile if its pin conflicts with the minimum requirement.
+
+      - name: Install VLCKit XCFrameworks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v carthage >/dev/null 2>&1; then brew install carthage; fi
+          carthage bootstrap --use-xcframeworks --platform iOS --cache-builds 2>&1 | tee "$LOG_DIR/carthage.log"
+
+      - name: Resolve Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies \
+            -project Mixtape.xcodeproj \
+            -scheme Mixtape \
+            -clonedSourcePackagesDirPath "$SPM_SOURCES" \
+            2>&1 | tee "$LOG_DIR/spm.log"
+          RESOLVED='Mixtape.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
+          if [ -f "$RESOLVED" ]; then cp "$RESOLVED" "$LOG_DIR/Package.resolved"; fi
+
+      - name: Check the effective iOS deployment target and project configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project Mixtape.xcodeproj -scheme Mixtape \
+            -configuration Debug -sdk iphoneos -showBuildSettings \
+            > "$LOG_DIR/build-settings.txt" 2>&1
+          python3 - <<'PY_SETTINGS'
+          from pathlib import Path
+          import re
+          txt = Path('build-ios18-clean/logs/build-settings.txt').read_text()
+          # Only check the Mixtape app, not dependency targets with different minima.
+          sections = re.split(r'(?m)^Build settings for action \w+ and target ', txt)
+          sections = [chunk for chunk in sections if chunk.startswith('Mixtape:')]
+          if not sections:
+              raise SystemExit('Unable to find Mixtape target build settings')
+          values = re.findall(r'^\s*IPHONEOS_DEPLOYMENT_TARGET = (\S+)',
+                              sections[0], flags=re.M)
+          if values != ['18.0']:
+              raise SystemExit(f'iOS 18 deployment target not effective for Mixtape: {values}')
+          print('Verified IPHONEOS_DEPLOYMENT_TARGET = 18.0')
+          PY_SETTINGS
+
+      - name: Build unsigned iOS 18 iPhone IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Mixtape.xcodeproj \
+            -scheme Mixtape \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath "$SPM_SOURCES" \
+            -jobs 2 \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee "$LOG_DIR/xcodebuild.log"
+
+      - name: Package Mixtape IPA for SideStore
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$DERIVED_DATA/Build/Products/Debug-iphoneos/Mixtape.app"
+          test -d "$APP"
+          file "$APP/Mixtape"
+          lipo "$APP/Mixtape" -verify_arch arm64
+          xcrun dwarfdump --uuid "$APP/Mixtape" > "$LOG_DIR/app-binary-uuid.txt" || true
+          find "$APP" -name 'Mixtape.debug.dylib' -exec xcrun dwarfdump --uuid '{}' \; > "$LOG_DIR/debug-dylib-uuid.txt" || true
+          # Give this experimental build a distinct version to avoid confusing IPA artifacts.
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 1.0.22' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 22' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" | tee "$LOG_DIR/diagnostic-app-version.txt"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" | tee -a "$LOG_DIR/diagnostic-app-version.txt"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist" | tee "$LOG_DIR/minimum-ios.txt"
+          grep -Fxq '18.0' "$LOG_DIR/minimum-ios.txt"
+          mkdir -p "$GITHUB_WORKSPACE/ios18-payload/Payload"
+          ditto "$APP" "$GITHUB_WORKSPACE/ios18-payload/Payload/Mixtape.app"
+          cd "$GITHUB_WORKSPACE/ios18-payload"
+          ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/Mixtape-iOS18-WebPlayer-unsigned.ipa"
+          unzip -tq "$GITHUB_WORKSPACE/Mixtape-iOS18-WebPlayer-unsigned.ipa"
+
+      - name: Verify embedded frameworks do not require iOS above 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$DERIVED_DATA/Build/Products/Debug-iphoneos/Mixtape.app"
+          python3 - "$APP" "$LOG_DIR" <<'PY_FRAMEWORKS'
+          import json
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          app, log_dir = map(Path, sys.argv[1:])
+          candidates = [app/'Mixtape']
+          fwdir = app/'Frameworks'
+          if fwdir.exists():
+              candidates.extend(p for p in fwdir.rglob('*') if p.is_file()
+                                and p.parent.suffix == '.framework'
+                                and p.name == p.parent.stem)
+              candidates.extend(p for p in fwdir.rglob('*.dylib') if p.is_file())
+          results = []
+          bad = []
+          for binary in candidates:
+              cmd = subprocess.run(['xcrun', 'vtool', '-show-build', '-arch', 'arm64', str(binary)],
+                                   text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+              if cmd.returncode != 0:
+                  # Not every embedded binary will have LC_BUILD_VERSION;
+                  # keep the failure visible rather than claiming validation.
+                  results.append({'binary': str(binary.relative_to(app)), 'status': 'unverified',
+                                  'detail': cmd.stderr.strip()[:300]})
+                  continue
+              minima = re.findall(r'(?m)^\s*minos\s+(\d+\.\d+(?:\.\d+)?)', cmd.stdout)
+              results.append({'binary': str(binary.relative_to(app)), 'minOS': minima})
+              if any(tuple(map(int, (v.split('.') + ['0', '0'])[:3])) > (18, 0, 0)
+                     for v in minima):
+                  bad.append(f'{binary.name}: minimum iOS version {minima}')
+          (log_dir/'embedded-minimum-versions.json').write_text(
+              json.dumps(results, indent=2), encoding='utf-8')
+          if bad:
+              raise SystemExit('Frameworks incompatible with iOS 18.0: ' + '; '.join(bad))
+          print('No verified arm64 embedded binary requires iOS > 18.0.')
+          PY_FRAMEWORKS
+
+      - name: Upload Mixtape for SideStore
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mixtape-iOS18-WebPlayer-unsigned-IPA
+          path: Mixtape-iOS18-WebPlayer-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Save errors and compatibility patches
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$LOG_DIR"
+          if [ -f "$LOG_DIR/xcodebuild.log" ]; then
+            grep -nE 'error:|fatal error:|unavailable in iOS|only available in iOS|requires iOS|BUILD FAILED|No such module|CasePathsMacros|PerceptionMacros|cannot find|undefined symbol|deployment target|linker command failed' "$LOG_DIR/xcodebuild.log" | tail -n 140 > "$LOG_DIR/ios18-errors.txt" || true
+          fi
+          git diff > "$LOG_DIR/all-port-changes.patch" || true
+          if [ -d ios18-reports ]; then cp -R ios18-reports "$LOG_DIR/"; fi
+          find "$DERIVED_DATA/Build/Products" -maxdepth 3 -name 'Mixtape.app' -print > "$LOG_DIR/app-paths.txt" 2>/dev/null || true
+
+      - name: Upload compatibility diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mixtape-iOS18-WebPlayer-diagnostics
+          path: build-ios18-clean/logs/
+          if-no-files-found: warn
+          retention-days: 14
