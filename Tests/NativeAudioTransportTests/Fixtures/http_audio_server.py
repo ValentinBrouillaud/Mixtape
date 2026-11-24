@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import re
+import signal
 import threading
 import time
 import unittest
@@ -188,6 +189,11 @@ class FixtureSelfTests(unittest.TestCase):
 
 
 def main():
+    # A Process launched from a Swift concurrency worker can inherit its blocked
+    # signal mask. Restore normal termination for this standalone test server.
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    if hasattr(signal, "pthread_sigmask"):
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM, signal.SIGINT})
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--media", type=Path, help="Serve bytes from a local audio file instead of synthetic data")
