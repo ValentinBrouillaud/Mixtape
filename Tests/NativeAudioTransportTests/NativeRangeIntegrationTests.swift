@@ -216,16 +216,6 @@ final class AudioHTTPFixture: @unchecked Sendable {
         process.standardError = FileHandle.standardError
         try process.run()
         do {
-            // Readiness must not pin a test worker indefinitely if Python fails
-            // before emitting its single flushed JSON line.
-            var descriptor = pollfd(
-                fd: pipe.fileHandleForReading.fileDescriptor,
-                events: Int16(POLLIN), revents: 0
-            )
-            guard poll(&descriptor, 1, 5_000) > 0 else {
-                throw NSError(domain: "AudioHTTPFixture", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "HTTP fixture did not become ready within five seconds."])
-            }
             let data = pipe.fileHandleForReading.availableData
             let info = try JSONDecoder().decode(Ready.self, from: data)
             guard let url = URL(string: "http://127.0.0.1:\(info.port)") else {
