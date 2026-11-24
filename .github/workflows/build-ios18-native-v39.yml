@@ -9,9 +9,63 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-tests
+      cancel-in-progress: true
+    env:
+      LOG_DIR: ${{ github.workspace }}/test-ios18-v39/logs
+
+    steps:
+      - name: Check out persisted iOS 18 sources
+        uses: actions/checkout@v4
+
+      - name: Prepare Xcode 26.2 and test logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$LOG_DIR"
+          XCODE_APP=/Applications/Xcode_26.2.app
+          test -d "$XCODE_APP"
+          sudo xcode-select --switch "$XCODE_APP/Contents/Developer"
+          xcodebuild -version | tee "$LOG_DIR/xcode-version.txt"
+          grep -Fxq 'Xcode 26.2' "$LOG_DIR/xcode-version.txt"
+          swift --version | tee "$LOG_DIR/swift-version.txt"
+          git rev-parse HEAD > "$LOG_DIR/source-commit.txt"
+
+      - name: Compile native HTTP audio tests
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift build --build-tests --package-path "$GITHUB_WORKSPACE" \
+            2>&1 | tee "$LOG_DIR/transport-test-build.log"
+
+      - name: Run native HTTP audio and decode tests
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --skip-build --package-path "$GITHUB_WORKSPACE" \
+            2>&1 | tee "$LOG_DIR/transport-tests.log"
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mixtape-iOS18-Native-v39-test-diagnostics
+          path: test-ios18-v39/logs/
+          if-no-files-found: warn
+          retention-days: 14
+
   build:
     runs-on: macos-26-intel
     timeout-minutes: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-build
+      cancel-in-progress: true
     env:
       BUILD_ROOT: ${{ github.workspace }}/build-ios18-v39
       DERIVED_DATA: ${{ github.workspace }}/build-ios18-v39/DerivedData
@@ -42,13 +96,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/validate_ios18_sources.py --report "$LOG_DIR/source-validation.json"
-
-      - name: Test native HTTP audio transport
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          set -euo pipefail
-          swift test --package-path "$GITHUB_WORKSPACE" 2>&1 | tee "$LOG_DIR/transport-tests.log"
 
       - name: Install VLCKit XCFrameworks
         shell: bash

@@ -51,6 +51,7 @@ Thumbs.db
 *.ipa
 ios18-reports/
 build-ios18-*/
+test-ios18-*/
 __pycache__/
 *.pyc
 *.dSYM.zip
