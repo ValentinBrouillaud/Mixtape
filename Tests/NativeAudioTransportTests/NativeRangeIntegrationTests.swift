@@ -189,7 +189,7 @@ struct NativeRangeIntegrationTests {
     }
 }
 
-private final class AudioHTTPFixture: @unchecked Sendable {
+final class AudioHTTPFixture: @unchecked Sendable {
     let process: Process
     let baseURL: URL
 
@@ -203,13 +203,14 @@ private final class AudioHTTPFixture: @unchecked Sendable {
         return data
     }()
 
-    init() throws {
+    init(mediaURL: URL? = nil) throws {
         let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/http_audio_server.py")
         let pipe = Pipe()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["python3", script.path, "--port", "0"]
+        if let mediaURL { process.arguments?.append(contentsOf: ["--media", mediaURL.path]) }
         process.standardOutput = pipe
         process.standardError = FileHandle.standardError
         try process.run()

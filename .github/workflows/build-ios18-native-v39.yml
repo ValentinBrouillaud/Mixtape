@@ -44,6 +44,7 @@ jobs:
           python3 scripts/validate_ios18_sources.py --report "$LOG_DIR/source-validation.json"
 
       - name: Test native HTTP audio transport
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loopback-only synthetic media fixture; no YouTube or audio decoding involved."""
+"""Loopback media fixture serving synthetic bytes or a supplied local audio file."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections import Counter
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from pathlib import Path
 import re
 import threading
 import time
@@ -28,8 +29,9 @@ IDENTITY = {
 class AudioServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address):
+    def __init__(self, address, body=BODY):
         super().__init__(address, AudioHandler)
+        self.body = body
         self.counts = Counter()
         self.count_lock = threading.Lock()
 
@@ -52,6 +54,7 @@ class AudioHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        body = self.server.body
         with self.server.count_lock:
             self.server.counts[path] += 1
             count = self.server.counts[path]
@@ -63,10 +66,10 @@ class AudioHandler(BaseHTTPRequestHandler):
                 self.send_bytes(200, b"<html>error</html>", "text/html")
                 return
             if path == "/whole":
-                self.send_bytes(200, BODY)
+                self.send_bytes(200, body)
                 return
             if path == "/short-whole":
-                self.send_bytes(200, BODY[:256])
+                self.send_bytes(200, body[:256])
                 return
             if path == "/redirect":
                 self.send_bytes(302, b"", extra={"Location": "/identity"})
@@ -85,15 +88,15 @@ class AudioHandler(BaseHTTPRequestHandler):
                 self.send_bytes(400, b"")
                 return
             start, end = map(int, match.groups())
-            if start >= len(BODY) or end < start:
-                self.send_bytes(416, b"", extra={"Content-Range": f"bytes */{len(BODY)}"})
+            if start >= len(body) or end < start:
+                self.send_bytes(416, b"", extra={"Content-Range": f"bytes */{len(body)}"})
                 return
-            end = min(end, len(BODY) - 1)
+            end = min(end, len(body) - 1)
             if path == "/clipped":
                 end = min(end, start + 16_384 - 1)
-            content = BODY[start : end + 1]
+            content = body[start : end + 1]
             range_start = start + 1 if path == "/bad-range" else start
-            total = len(BODY) + (1 if path == "/changed-total" and start > 0 else 0)
+            total = len(body) + (1 if path == "/changed-total" and start > 0 else 0)
             content_range = f"bytes {range_start}-{end}/{total}"
             if path == "/overlong":
                 content += b"unexpected-extra"
@@ -165,16 +168,38 @@ class FixtureSelfTests(unittest.TestCase):
         with self.assertRaises(http.client.IncompleteRead):
             self.request("/truncated")
 
+    def test_custom_media_uses_its_actual_length_and_bytes(self):
+        custom = PREFIX + b"local-aac-fixture" * 41
+        server = AudioServer(("127.0.0.1", 0), body=custom)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection(*server.server_address, timeout=3)
+            connection.request("GET", "/range", headers={"Range": "bytes=24-1023"})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.getheader("Content-Range"), f"bytes 24-{len(custom) - 1}/{len(custom)}")
+            self.assertEqual(response.read(), custom[24:])
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--media", type=Path, help="Serve bytes from a local audio file instead of synthetic data")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(FixtureSelfTests))
         return 0 if result.wasSuccessful() else 1
-    server = AudioServer(("127.0.0.1", args.port))
+    body = args.media.read_bytes() if args.media else BODY
+    if not body:
+        parser.error("--media must contain a nonempty audio file")
+    server = AudioServer(("127.0.0.1", args.port), body=body)
     print(json.dumps({"port": server.server_port}), flush=True)
     try:
         server.serve_forever()

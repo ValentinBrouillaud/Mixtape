@@ -1,8 +1,8 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-// Foundation-only transport contracts can run on macOS without a simulator or
-// signing. The Xcode app build separately compiles the AVFoundation integration.
+// HTTP and AVFoundation decoding tests run on macOS without a simulator,
+// signing, audio hardware or an external music-service account.
 let package = Package(
     name: "NativeAudioTransport",
     platforms: [.macOS(.v13)],
@@ -13,6 +13,7 @@ let package = Package(
             path: "Services",
             sources: [
                 "Player/HTTPAudioRangeClient.swift",
+                "Player/HTTPAudioResourceLoader.swift",
                 "Player/MixtapeHTTPAudioTransfer.swift",
                 "API/Models/PlayerResponse.swift",
             ]
