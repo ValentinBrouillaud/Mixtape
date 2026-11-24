@@ -191,7 +191,7 @@ struct NativeRangeIntegrationTests {
 }
 
 final class AudioHTTPFixture: @unchecked Sendable {
-    let process: Process
+    let process: Process?
     let baseURL: URL
 
     static let expected: Data = {
@@ -205,6 +205,23 @@ final class AudioHTTPFixture: @unchecked Sendable {
     }()
 
     init(mediaURL: URL? = nil) throws {
+        let environment = ProcessInfo.processInfo.environment
+        if let value = environment["MIXTAPE_AUDIO_TEST_SERVER_BASE"],
+           let server = URL(string: value), server.scheme == "http", server.host == "127.0.0.1" {
+            self.process = nil
+            if let mediaURL {
+                guard let directory = environment["MIXTAPE_AUDIO_TEST_MEDIA_DIRECTORY"] else {
+                    throw CocoaError(.fileNoSuchFile)
+                }
+                let target = URL(fileURLWithPath: directory, isDirectory: true)
+                    .appendingPathComponent(mediaURL.lastPathComponent)
+                try FileManager.default.copyItem(at: mediaURL, to: target)
+                baseURL = server.appendingPathComponent("media").appendingPathComponent(mediaURL.lastPathComponent)
+            } else {
+                baseURL = server
+            }
+            return
+        }
         let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/http_audio_server.py")
         let pipe = Pipe()
@@ -235,7 +252,7 @@ final class AudioHTTPFixture: @unchecked Sendable {
     func url(_ path: String) -> URL { baseURL.appendingPathComponent(path) }
 
     func stop() {
-        Self.stop(process)
+        if let process { Self.stop(process) }
     }
 
     private static func stop(_ process: Process) {

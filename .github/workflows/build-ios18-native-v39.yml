@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          swift test --skip-build --package-path "$GITHUB_WORKSPACE" \
+          bash scripts/test_native_audio.sh \
             2>&1 | tee "$LOG_DIR/transport-tests.log"
 
       - name: Upload test diagnostics

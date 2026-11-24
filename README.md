@@ -32,11 +32,14 @@ Validation commands on macOS:
 
 ```sh
 python3 scripts/validate_ios18_sources.py
-swift test
+swift build --build-tests
+bash scripts/test_native_audio.sh
 ```
 
 Transport fixtures test successful/clipped ranges, HTTP failures, incomplete
-bodies and cancellation. These tests do not prove audible playback on an
+bodies and cancellation. Generated AAC verifies decoded samples through the
+native loader after a silent lead-in and a seek, and across an offline file.
+These tests do not prove audible playback on an
 iPhone. Before treating the build as validated, test a complete online track,
 seek past the first minute, change tracks rapidly, pause during loading, then
 download a track and play it with airplane mode enabled. Check background audio

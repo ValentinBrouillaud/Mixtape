@@ -13,6 +13,9 @@ import re
 import signal
 import threading
 import time
+import tempfile
+import subprocess
+import sys
 import unittest
 from urllib.parse import urlsplit
 
@@ -30,9 +33,10 @@ IDENTITY = {
 class AudioServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, body=BODY):
+    def __init__(self, address, body=BODY, media_directory=None):
         super().__init__(address, AudioHandler)
         self.body = body
+        self.media_directory = media_directory.resolve() if media_directory else None
         self.counts = Counter()
         self.count_lock = threading.Lock()
 
@@ -56,6 +60,18 @@ class AudioHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         body = self.server.body
+        if path.startswith("/media/"):
+            parts = path.split("/")
+            if (len(parts) != 4 or self.server.media_directory is None
+                or not re.fullmatch(r"(?:Mixtape-tone|mixtape-test-tone-[A-Fa-f0-9-]+)\.m4a", parts[2])):
+                self.send_bytes(404, b"")
+                return
+            media = (self.server.media_directory / parts[2]).resolve()
+            if media.parent != self.server.media_directory or not media.is_file():
+                self.send_bytes(404, b"")
+                return
+            body = media.read_bytes()
+            path = "/" + parts[3]
         with self.server.count_lock:
             self.server.counts[path] += 1
             count = self.server.counts[path]
@@ -187,6 +203,42 @@ class FixtureSelfTests(unittest.TestCase):
             server.server_close()
             thread.join()
 
+    def test_cli_ready_file_and_media_directory(self):
+        with tempfile.TemporaryDirectory(prefix="mixtape-fixture-selftest-") as temporary:
+            directory = Path(temporary)
+            ready = directory / "ready.json"
+            media = directory / "Mixtape-tone.m4a"
+            content = PREFIX + b"generated-aac" * 80
+            media.write_bytes(content)
+            child = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), "--ready-file", str(ready),
+                 "--media-directory", str(directory)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            try:
+                deadline = time.monotonic() + 10
+                while not ready.is_file() and child.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.is_file(), "CLI did not write its ready file")
+                port = json.loads(ready.read_text())["port"]
+                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                connection.request("GET", "/media/Mixtape-tone.m4a/range", headers={"Range": "bytes=0-1023"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 206)
+                self.assertEqual(response.read(), content[:1024])
+                connection.request("GET", "/media/unauthorized.m4a/range", headers={"Range": "bytes=0-31"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 404)
+                response.read()
+                connection.close()
+            finally:
+                child.terminate()
+                try:
+                    child.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.communicate(timeout=3)
+
 
 def main():
     # A Process launched from a Swift concurrency worker can inherit its blocked
@@ -197,6 +249,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--media", type=Path, help="Serve bytes from a local audio file instead of synthetic data")
+    parser.add_argument("--media-directory", type=Path, help="Directory for generated test-tone AAC files")
+    parser.add_argument("--ready-file", type=Path, help="Write the bound port as JSON for an external test runner")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -205,8 +259,15 @@ def main():
     body = args.media.read_bytes() if args.media else BODY
     if not body:
         parser.error("--media must contain a nonempty audio file")
-    server = AudioServer(("127.0.0.1", args.port), body=body)
-    print(json.dumps({"port": server.server_port}), flush=True)
+    if args.media_directory and not args.media_directory.is_dir():
+        parser.error("--media-directory must be an existing directory")
+    server = AudioServer(("127.0.0.1", args.port), body=body, media_directory=args.media_directory)
+    readiness = json.dumps({"port": server.server_port})
+    if args.ready_file:
+        staging = args.ready_file.with_name(args.ready_file.name + ".tmp")
+        staging.write_text(readiness + "\n", encoding="utf-8")
+        staging.replace(args.ready_file)
+    print(readiness, flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
