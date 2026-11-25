@@ -148,12 +148,12 @@ extension Song {
 // MARK: - Equatable & Hashable
 
 extension Song {
-    static func == (lhs: Song, rhs: Song) -> Bool {
+    nonisolated static func == (lhs: Song, rhs: Song) -> Bool {
         // Compare by video ID for identity equality
         lhs.videoId == rhs.videoId
     }
 
-    func hash(into hasher: inout Hasher) {
+    nonisolated func hash(into hasher: inout Hasher) {
         hasher.combine(self.videoId)
     }
 }

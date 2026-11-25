@@ -97,6 +97,18 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_ios18_sources.py --report "$LOG_DIR/source-validation.json"
 
+      # Package-only tests do not inherit the app's actor isolation defaults.
+      - name: Typecheck persisted value models with app isolation defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun swiftc -swift-version 6 -default-isolation MainActor \
+            -parse-as-library -typecheck \
+            Models/YTMusic/Artist.swift Models/YTMusic/Album.swift \
+            Models/YTMusic/LikeStatus.swift Models/YTMusic/Song.swift \
+            Models/PlaybackQueue.swift \
+            2>&1 | tee "$LOG_DIR/value-model-typecheck.log"
+
       - name: Install VLCKit XCFrameworks
         shell: bash
         run: |
