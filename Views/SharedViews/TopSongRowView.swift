@@ -37,6 +37,11 @@ struct TopSongRowView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
+                ArtistLinksView(artists: song.artists)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

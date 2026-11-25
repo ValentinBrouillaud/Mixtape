@@ -183,7 +183,7 @@ struct PlayerBarCover: View {
                     .frame(height: isShowingPanel ? 22 : 26)
                     .matchedGeometryEffect(id: "title", in: animation)
 
-                Text(viewModel.currentTrack?.artistsDisplay ?? "")
+                ArtistLinksView(artists: viewModel.currentTrack?.artists ?? [], onNavigate: onDismiss)
                     .font(.system(size: isShowingPanel ? 15 : 17))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -393,8 +393,7 @@ struct PlayerBarCover: View {
                 Image(systemName: "list.bullet")
                     .font(.title3)
                     .foregroundStyle(viewModel.showQueue ? .white : .secondary)
-                    .frame(width: 30, height: 30)
-                    .padding(4)
+                    .frame(width: 44, height: 44)
                     .background {
                         Circle()
                             .fill(.white.opacity(viewModel.showQueue ? 0.2 : 0))
@@ -402,6 +401,8 @@ struct PlayerBarCover: View {
                     .animation(.easeInOut, value: viewModel.showQueue)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Queue")
+            .accessibilityValue(viewModel.showQueue ? "Open" : "Closed")
 
             // Repeat
             Button {
@@ -494,6 +495,7 @@ private struct MixtapeStableTrackActions: View, Equatable {
             }
 
             // Nested menus own their state separately from playback progress.
+            QueueContextMenuItems(song: song)
             MixtapeQuickAddMenu(song: song)
             DownloadContextMenuItems(song: song)
 

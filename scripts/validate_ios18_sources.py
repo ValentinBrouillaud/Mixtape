@@ -35,7 +35,7 @@ def check_sources(root: Path) -> dict:
         "/* End XCBuildConfiguration section */", 1
     )[0]
     blocks = re.split(r"(?m)^\t\t[A-F0-9]{24} /\* [^\n]+ \*/ = \{", section)[1:]
-    app_configs = [block for block in blocks if "PRODUCT_BUNDLE_IDENTIFIER =" in block]
+    app_configs = [block for block in blocks if re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "?com\.alexcding\.mixtape"?;', block)]
     if len(app_configs) != 2:
         raise ValueError(f"Expected two Mixtape app configurations; found {len(app_configs)}")
     configurations = []

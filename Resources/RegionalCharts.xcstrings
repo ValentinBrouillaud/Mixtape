@@ -1,0 +1,216 @@
+{
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    "Top 50 by country": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top 50 par pays"
+          }
+        }
+      }
+    },
+    "Current and weekly YouTube charts": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classements YouTube actuels et hebdomadaires"
+          }
+        }
+      }
+    },
+    "Country": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pays"
+          }
+        }
+      }
+    },
+    "Period": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Période"
+          }
+        }
+      }
+    },
+    "Current": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actuel"
+          }
+        }
+      }
+    },
+    "Weekly": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hebdomadaire"
+          }
+        }
+      }
+    },
+    "Monthly": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensuel"
+          }
+        }
+      }
+    },
+    "Monthly chart unavailable": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classement mensuel indisponible"
+          }
+        }
+      }
+    },
+    "YouTube does not publish an official monthly chart here. No ranking is estimated.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "YouTube ne publie pas de classement mensuel officiel ici. Aucun classement n’est estimé."
+          }
+        }
+      }
+    },
+    "Official chart": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classement officiel"
+          }
+        }
+      }
+    },
+    "Loading chart…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chargement du classement…"
+          }
+        }
+      }
+    },
+    "Chart unavailable": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Classement indisponible"
+          }
+        }
+      }
+    },
+    "Retry": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessayer"
+          }
+        }
+      }
+    },
+    "This session did not return an official playlist for this country and period. You can also consult YouTube Charts.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette session n’a pas fourni de playlist officielle pour ce pays et cette période. Tu peux aussi consulter YouTube Charts."
+          }
+        }
+      }
+    },
+    "Play all": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout écouter"
+          }
+        }
+      }
+    },
+    "Source: YouTube Music. The first 50 available entries retain the source order; availability depends on country and account.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source : YouTube Music. Les 50 premières entrées disponibles conservent l’ordre de la source ; la disponibilité dépend du pays et du compte."
+          }
+        }
+      }
+    },
+    "Open official YouTube Charts": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consulter YouTube Charts"
+          }
+        }
+      }
+    },
+    "Worldwide": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monde"
+          }
+        }
+      }
+    },
+    "Play next": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lire ensuite"
+          }
+        }
+      }
+    },
+    "Add to queue": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter à la file"
+          }
+        }
+      }
+    },
+    "Song actions": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions du morceau"
+          }
+        }
+      }
+    }
+  }
+}

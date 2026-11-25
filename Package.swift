@@ -10,12 +10,15 @@ let package = Package(
     targets: [
         .target(
             name: "NativeAudioTransport",
-            path: "Services",
+            path: ".",
             sources: [
-                "Player/HTTPAudioRangeClient.swift",
-                "Player/HTTPAudioResourceLoader.swift",
-                "Player/MixtapeHTTPAudioTransfer.swift",
-                "API/Models/PlayerResponse.swift",
+                "Services/Player/HTTPAudioRangeClient.swift",
+                "Services/Player/HTTPAudioResourceLoader.swift",
+                "Services/Player/MixtapeHTTPAudioTransfer.swift",
+                "Services/API/Models/PlayerResponse.swift",
+                "Services/Charts/RegionalChartDirectory.swift",
+                "Services/History/ListeningHistoryPolicy.swift",
+                "Models/PlaybackQueue.swift",
             ]
         ),
         .testTarget(
@@ -24,5 +27,9 @@ let package = Package(
             path: "Tests/NativeAudioTransportTests",
             exclude: ["Fixtures"]
         ),
+        .target(name: "ArtistNavigation", path: "Models/YTMusic", sources: ["Artist.swift"]),
+        .testTarget(name: "ArtistNavigationTests", dependencies: ["ArtistNavigation"], path: "Tests/ArtistNavigationTests"),
+        .target(name: "SharedWidgetModel", path: "SharedWidgets"),
+        .testTarget(name: "WidgetSnapshotTests", dependencies: ["SharedWidgetModel"], path: "Tests/WidgetSnapshotTests"),
     ]
 )

@@ -14,6 +14,20 @@ struct DiscoveryContentView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 32) {
+                NavigationLink {
+                    RegionalChartsView()
+                } label: {
+                    HStack {
+                        Image(systemName: "chart.bar.xaxis").font(.title2).foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Top 50 by country", tableName: "RegionalCharts").font(.headline)
+                            Text("Current and weekly YouTube charts", tableName: "RegionalCharts")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }.padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
+                }.buttonStyle(.plain).padding(.horizontal)
                 ForEach(viewModel.sections) { section in
                     sectionView(section)
                 }
@@ -54,12 +68,9 @@ struct DiscoveryContentView: View {
     private func itemCard(item: HomeSectionItem) -> some View {
         switch item {
         case let .song(song):
-            Button {
+            SongCard(song: song) {
                 Task { await viewModel.playerManager.playWithRadio(song: song) }
-            } label: {
-                SongCard(song: song)
             }
-            .buttonStyle(.interactiveCard)
         case let .playlist(playlist):
             Button {
                 self.viewModel.didSelectPlaylist(playlist)

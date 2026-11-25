@@ -42,6 +42,14 @@ struct MixtapeApp: App {
                 .environment(\.navigationSelection, $appCoordinator.navigationSelection)
                 .environment(\.showCommandBar, $showCommandBar)
                 .environment(\.locale, appLocale)
+                .task {
+                    WidgetSnapshotBridge.shared.updateHistory(ListeningHistoryStore.shared.entries)
+                    WidgetSnapshotBridge.shared.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
+                    WidgetSnapshotBridge.shared.updatePlayback(song: playerManager.currentTrack, isPlaying: playerManager.isPlaying)
+                }
+                .onOpenURL { url in
+                    Task { @MainActor in await openWidgetURL(url) }
+                }
         }
         #if os(macOS)
         .commands {
@@ -174,6 +182,30 @@ struct MixtapeApp: App {
         }
         .defaultSize(width: 450, height: 600)
         #endif
+    }
+
+    private func openWidgetURL(_ url: URL) async {
+        guard let route = MixtapeWidgetRoute(url: url) else { return }
+        switch route {
+        case .library:
+            appCoordinator.navigationSelection = .library
+        case .playlist(let id):
+            appCoordinator.navigationSelection = .library
+            WidgetNavigationRouter.shared.pendingPlaylistID = id
+        case .resume:
+            guard !playerManager.isPlaying else { return }
+            if playerManager.currentTrack != nil || !playerManager.queue.isEmpty {
+                await playerManager.playPause()
+            } else if let latest = ListeningHistoryStore.shared.entries.first {
+                await playerManager.play(song: latest.playbackSong)
+            }
+        case .play(let videoId):
+            if let entry = ListeningHistoryStore.shared.entries.first(where: { $0.videoId == videoId }) {
+                await playerManager.play(song: entry.playbackSong)
+            } else {
+                await playerManager.play(videoId: videoId)
+            }
+        }
     }
 
     #if os(macOS)

@@ -1,0 +1,356 @@
+{
+  "kind": "live public chart browse probe",
+  "clientVersion": "1.20250310.01.00",
+  "contextRegion": "FR",
+  "language": "en",
+  "countries": [
+    {
+      "country": "FR",
+      "cookiesSent": false,
+      "carousels": [
+        {
+          "title": "Video charts",
+          "contents": [
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Trending 20 France",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLOLAK5uy_mnRyLDuByhBA_r8-L9ugjllTxfVytwAp0"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLOLAK5uy_mnRyLDuByhBA_r8-L9ugjllTxfVytwAp0"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Daily Top Music Videos - France",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4jkpIghTDva5AhM3tkkwc9"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4jkpIghTDva5AhM3tkkwc9"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 100 Music Videos France",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn50iCQRUVmgUjOrCggCQ9nR"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn50iCQRUVmgUjOrCggCQ9nR"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "httpStatus": 200,
+      "errorPresent": false,
+      "tileCount": 3
+    },
+    {
+      "country": "US",
+      "cookiesSent": false,
+      "carousels": [
+        {
+          "title": "Video charts",
+          "contents": [
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 100 Live Performances - United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4yCNzulPkUbxgr4pl0gmI-"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4yCNzulPkUbxgr4pl0gmI-"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Trending 20 United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLOLAK5uy_kNWGJvgWVqlt5LsFDL9Sdluly4M8TvGkM"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLOLAK5uy_kNWGJvgWVqlt5LsFDL9Sdluly4M8TvGkM"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Daily Top Music Videos - United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn61unMfmrUSz68RT8IFFnks"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn61unMfmrUSz68RT8IFFnks"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 100 Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn69On1f-8NAvX_CYlx7QyZc"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn69On1f-8NAvX_CYlx7QyZc"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "title": "Genres",
+          "contents": [
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Country & Americana Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4EBsWVeFpcSAVOFMfhyipg"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4EBsWVeFpcSAVOFMfhyipg"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Jazz Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn7Wkr6Ll6ds1AhA42rT8uaU"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn7Wkr6Ll6ds1AhA42rT8uaU"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Dance & Electronic Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4rBU0RHnR6-b1_uE20CzRH"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4rBU0RHnR6-b1_uE20CzRH"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Hip Hop Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4fmCoF1vKHLtivI0f9yHiF"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4fmCoF1vKHLtivI0f9yHiF"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Pop Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn77aK7sAW2AT0oOzo5inWY8"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn77aK7sAW2AT0oOzo5inWY8"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Latin Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn5O8siDeZuI_4hbk6JWtTX1"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn5O8siDeZuI_4hbk6JWtTX1"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Rock Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn5LOptOQixqnzXNGjNXAgYY"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn5LOptOQixqnzXNGjNXAgYY"
+                  }
+                }
+              }
+            },
+            {
+              "musicTwoRowItemRenderer": {
+                "title": {
+                  "runs": [
+                    {
+                      "text": "Top 50 Hard Rock & Metal Music Videos United States",
+                      "navigationEndpoint": {
+                        "browseEndpoint": {
+                          "browseId": "VLPL4fGSI1pDJn4w4wTTgOmP_S80PoCtbGrL"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "navigationEndpoint": {
+                  "browseEndpoint": {
+                    "browseId": "VLPL4fGSI1pDJn4w4wTTgOmP_S80PoCtbGrL"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "httpStatus": 200,
+      "errorPresent": false,
+      "tileCount": 12
+    }
+  ]
+}

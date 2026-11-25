@@ -11603,6 +11603,206 @@
         }
       },
       "shouldTranslate" : false
+    },
+    "Reorder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réorganiser"
+          }
+        }
+      }
+    },
+    "Finish reordering queue": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminer la réorganisation"
+          }
+        }
+      }
+    },
+    "Reorder queue": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réorganiser la file"
+          }
+        }
+      }
+    },
+    "Clear upcoming songs": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vider les morceaux à suivre"
+          }
+        }
+      }
+    },
+    "Now playing": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En cours de lecture"
+          }
+        }
+      }
+    },
+    "Nothing queued next": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun morceau à suivre"
+          }
+        }
+      }
+    },
+    "Next up": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À suivre"
+          }
+        }
+      }
+    },
+    "Songs you add to the queue play before the remaining playlist or radio.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les morceaux ajoutés à la file sont lus avant la suite de la playlist ou de la radio."
+          }
+        }
+      }
+    },
+    "Add songs from their menu or start a playlist.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoute des morceaux depuis leur menu ou lance une playlist."
+          }
+        }
+      }
+    },
+    "Added by you": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouté par toi"
+          }
+        }
+      }
+    },
+    "Play next": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lire ensuite"
+          }
+        }
+      }
+    },
+    "Add to queue": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter à la file"
+          }
+        }
+      }
+    },
+    "Move to end": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déplacer à la fin"
+          }
+        }
+      }
+    },
+    "Remove from queue": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer de la file"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer"
+          }
+        }
+      }
+    },
+    "Open artist": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir l’artiste"
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvert"
+          }
+        }
+      }
+    },
+    "Closed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermé"
+          }
+        }
+      }
+    },
+    "Play %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lire %@"
+          }
+        }
+      }
+    },
+    "Queue actions for %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions de la file pour %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

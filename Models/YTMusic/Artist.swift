@@ -9,6 +9,18 @@ struct Artist: Identifiable, Codable, Hashable, Sendable {
     let thumbnailURL: URL?
     let songCount: Int?
 
+    /// Only associated YouTube channel browse IDs can open an artist page.
+    /// Inline credits without an endpoint retain their generated identity for
+    /// display and persistence, but must never become navigation destinations.
+    nonisolated var hasNavigableBrowseID: Bool {
+        let bytes = Array(id.utf8)
+        guard bytes.count == 24, bytes[0] == 85, bytes[1] == 67 else { return false }
+        return bytes.dropFirst(2).allSatisfy { byte in
+            (65...90).contains(byte) || (97...122).contains(byte)
+                || (48...57).contains(byte) || byte == 95 || byte == 45
+        }
+    }
+
     init(id: String, name: String, thumbnailURL: URL? = nil, songCount: Int? = nil) {
         self.id = id
         self.name = name

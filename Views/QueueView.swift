@@ -1,20 +1,22 @@
-import SwiftUI
 import FactoryKit
+import SwiftUI
 
-// MARK: - QueueView
-
-/// Right sidebar panel displaying the playback queue.
+/// The visible order is the playback order. Each row identifies one occurrence,
+/// so duplicate songs can be reordered or removed independently.
 struct QueueView: View {
     @Injected(\.playerManager) private var playerManager
-    @Environment(\.showCommandBar) private var showCommandBar
+    #if os(iOS)
+    @State private var editMode: EditMode = .inactive
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            headerView
-
-            // Content
-            contentView
+            header
+            if playerManager.queueEntries.isEmpty {
+                emptyState
+            } else {
+                queueList
+            }
         }
         #if os(macOS)
         .frame(minWidth: 280, maxWidth: 280)
@@ -22,203 +24,169 @@ struct QueueView: View {
         .accessibilityIdentifier(AccessibilityID.Queue.container)
     }
 
-    // MARK: - Header
-
-    private var headerView: some View {
-        HStack {
-            Text("Continue playing")
-                .font(.headline)
-                .foregroundStyle(.primary)
-
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text("Queue").font(.headline)
             Spacer()
-
-            // Clear queue button (only show if there are items beyond the current track)
-            if playerManager.queue.count > 1 {
-                Button {
-                    playerManager.clearQueue()
-                } label: {
-                    Text("Clear")
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
+            if !playerManager.upcomingQueueEntries.isEmpty {
+                #if os(iOS)
+                Button(editMode == .active ? "Done" : "Reorder") {
+                    withAnimation { editMode = editMode == .active ? .inactive : .active }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(AccessibilityID.Queue.clearButton)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-    }
-
-    // MARK: - Content
-
-    @ViewBuilder
-    private var contentView: some View {
-        if playerManager.queue.isEmpty {
-            emptyQueueView
-        } else {
-            queueListView
-        }
-    }
-
-    private var emptyQueueView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "list.bullet")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-
-            Text("No Queue")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
-            Text("Play songs from a playlist or album to build your queue.")
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier(AccessibilityID.Queue.emptyState)
-    }
-
-    private var queueListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(playerManager.queue.enumerated()), id: \.element.videoId) { index, song in
-                    QueueRowView(
-                        song: song,
-                        isCurrentTrack: index == playerManager.currentIndex,
-                        index: index,
-                        onRemove: {
-                            playerManager.removeFromQueue(videoIds: [song.videoId])
-                        },
-                        onTap: {
-                            Task {
-                                await playerManager.playFromQueue(at: index)
-                            }
-                        }
-                    )
-                    .accessibilityIdentifier(AccessibilityID.Queue.row(index: index))
-                }
+                .accessibilityLabel(editMode == .active ? "Finish reordering queue" : "Reorder queue")
+                #endif
+                Button("Clear") { playerManager.clearQueue() }
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Clear upcoming songs")
+                    .accessibilityIdentifier(AccessibilityID.Queue.clearButton)
             }
-            .padding(.vertical, 8)
-            .scrollClipDisabled()
-        }
-        .accessibilityIdentifier(AccessibilityID.Queue.scrollView)
-    }
-}
-
-// MARK: - QueueRowView
-
-private struct QueueRowView: View {
-    let song: Song
-    let isCurrentTrack: Bool
-    let index: Int
-    let onRemove: () -> Void
-    let onTap: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 10) {
-                // Now Playing indicator or track number
-                leadingIndicator
-                    .frame(width: 20)
-
-                // Thumbnail
-                RemoteImage(url: song.thumbnailURL?.cardThumbnailURL, placeholder: {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.quaternary)
-                        .overlay {
-                            Image(.appIcon)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 16, height: 16)
-                                .foregroundStyle(.secondary)
-                        }
-                })
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 40, height: 40, alignment: .leading)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                // Track info
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(song.title)
-                        .font(.system(size: 13, weight: isCurrentTrack ? .semibold : .regular))
-                        .lineLimit(1)
-                        .foregroundStyle(isCurrentTrack ? .red : .primary)
-
-                    Text(song.artistsDisplay.isEmpty ? "Unknown Artist" : song.artistsDisplay)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                // Duration
-                if let duration = song.duration {
-                    Text(formatDuration(duration))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .background(backgroundColor)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .contextMenu {
-            if !isCurrentTrack {
-                Button(role: .destructive) {
-                    onRemove()
-                } label: {
-                    Label("Remove from Queue", systemImage: "minus.circle")
+        .padding(.horizontal, 16)
+        .frame(minHeight: 44)
+    }
+
+    private var queueList: some View {
+        List {
+            if let entry = playerManager.currentQueueEntry {
+                Section {
+                    QueueEntryRow(entry: entry, isCurrent: true, onPlay: {
+                        Task { await playerManager.resume() }
+                    })
+                    .moveDisabled(true)
+                    .deleteDisabled(true)
+                } header: {
+                    Text("Now playing")
                 }
             }
+            Section {
+                let upcoming = playerManager.upcomingQueueEntries
+                ForEach(Array(upcoming.enumerated()), id: \.element.id) { offset, entry in
+                    QueueEntryRow(
+                        entry: entry,
+                        isCurrent: false,
+                        onPlay: { Task { await playerManager.playFromQueue(id: entry.id) } },
+                        onPlayNext: { playerManager.moveQueueEntryToNext(id: entry.id) },
+                        onMoveToEnd: { playerManager.moveQueueEntryToEnd(id: entry.id) },
+                        onRemove: { playerManager.removeQueueEntry(id: entry.id) }
+                    )
+                    .accessibilityIdentifier(AccessibilityID.Queue.row(index: playerManager.currentIndex + offset + 1))
+                    .accessibilityAction(named: Text("Play next")) { playerManager.moveQueueEntryToNext(id: entry.id) }
+                    .accessibilityAction(named: Text("Move to end")) { playerManager.moveQueueEntryToEnd(id: entry.id) }
+                    .accessibilityAction(named: Text("Remove from queue")) { playerManager.removeQueueEntry(id: entry.id) }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { playerManager.removeQueueEntry(id: entry.id) } label: {
+                            Label("Remove", systemImage: "minus.circle")
+                        }
+                    }
+                }
+                .onMove { offsets, destination in
+                    playerManager.moveUpcomingQueue(from: offsets, to: destination)
+                }
+                .onDelete { offsets in
+                    for offset in offsets where upcoming.indices.contains(offset) {
+                        playerManager.removeQueueEntry(id: upcoming[offset].id)
+                    }
+                }
+                if upcoming.isEmpty {
+                    Text("Nothing queued next")
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                }
+            } header: {
+                Text("Next up")
+            } footer: {
+                Text("Songs you add to the queue play before the remaining playlist or radio.")
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        #if os(iOS)
+        .environment(\.editMode, $editMode)
+        #endif
+        .accessibilityIdentifier(AccessibilityID.Queue.scrollView)
     }
 
-    @ViewBuilder
-    private var leadingIndicator: some View {
-        if isCurrentTrack {
-            Image(systemName: "waveform")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.red)
-                .symbolEffect(.variableColor.iterative, options: .repeating)
-        } else {
-            Text("\(index + 1)")
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No Queue", systemImage: "list.bullet")
+        } description: {
+            Text("Add songs from their menu or start a playlist.")
         }
-    }
-
-    private var backgroundColor: Color {
-        if isCurrentTrack {
-            return Color.red.opacity(0.1)
-        } else if isHovering {
-            return Color.primary.opacity(0.05)
-        }
-        return .clear
-    }
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+        .accessibilityIdentifier(AccessibilityID.Queue.emptyState)
     }
 }
 
-#Preview("Queue View") {
-    QueueView()
-        .frame(height: 600)
-}
+private struct QueueEntryRow: View {
+    let entry: PlaybackQueue<Song>.Entry
+    let isCurrent: Bool
+    let onPlay: () -> Void
+    var onPlayNext: (() -> Void)?
+    var onMoveToEnd: (() -> Void)?
+    var onRemove: (() -> Void)?
 
-#Preview("Queue View with Items") {
-    QueueView()
-        .frame(height: 600)
+    private var song: Song { entry.track }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onPlay) {
+                RemoteImage(url: song.thumbnailURL?.cardThumbnailURL, placeholder: {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(.quaternary)
+                        .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
+                })
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+            }
+            .accessibilityLabel("Play \(song.title)")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Button(action: onPlay) {
+                    Text(song.title)
+                        .font(.subheadline.weight(isCurrent ? .semibold : .regular))
+                        .foregroundStyle(isCurrent ? .red : .primary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ArtistLinksView(artists: song.artists)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if !isCurrent, entry.isUserAdded {
+                    Text("Added by you")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            if isCurrent {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Now playing")
+            } else {
+                Menu {
+                    if let onPlayNext {
+                        Button(action: onPlayNext) { Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") }
+                    }
+                    if let onMoveToEnd {
+                        Button(action: onMoveToEnd) { Label("Move to end", systemImage: "text.append") }
+                    }
+                    if let onRemove {
+                        Button(role: .destructive, action: onRemove) { Label("Remove from queue", systemImage: "minus.circle") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Queue actions for \(song.title)")
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .listRowBackground(isCurrent ? Color.red.opacity(0.08) : .clear)
+    }
 }

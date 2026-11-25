@@ -153,15 +153,58 @@ struct SearchContentView: View {
 
     @ViewBuilder
     private func resultRow(_ item: SearchResultItem, index: Int) -> some View {
-        Button {
-            self.handleItemTap(item)
-        } label: {
-            self.resultRowContent(item)
+        Group {
+            if case let .song(song) = item {
+                songResultRow(song, item: item)
+            } else {
+                Button {
+                    self.handleItemTap(item)
+                } label: {
+                    self.resultRowContent(item)
+                }
+                .buttonStyle(.interactiveRow(cornerRadius: Layout.cornerRadius))
+            }
         }
-        .buttonStyle(.interactiveRow(cornerRadius: Layout.cornerRadius))
         .contextMenu {
             self.contextMenuItems(for: item)
         }
+    }
+
+    private func songResultRow(_ song: Song, item: SearchResultItem) -> some View {
+        HStack(spacing: 14) {
+            Button {
+                handleItemTap(item)
+            } label: {
+                RemoteImage(url: song.thumbnailURL?.cardThumbnailURL) {
+                    Rectangle().fill(.quaternary)
+                        .overlay { Image(systemName: "music.note").foregroundStyle(.secondary) }
+                }
+                .aspectRatio(contentMode: .fill)
+                .frame(width: Layout.thumbnailSize, height: Layout.thumbnailSize)
+                .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Button {
+                    handleItemTap(item)
+                } label: {
+                    Text(song.title)
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                ArtistLinksView(artists: song.artists)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.vertical, 10)
     }
 
     private func handleItemTap(_ item: SearchResultItem) {
@@ -271,7 +314,9 @@ struct SearchContentView: View {
 
         Divider()
         DownloadContextMenuItems(song: song)
+        QueueContextMenuItems(song: song)
         MixtapeQuickAddMenu(song: song)
+        ArtistContextMenuItems(artists: song.artists)
     }
 
     @ViewBuilder

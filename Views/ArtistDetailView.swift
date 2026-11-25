@@ -452,6 +452,8 @@ struct ArtistDetailView: View {
             }
         }
         .contextMenu {
+            QueueContextMenuItems(song: song)
+            ArtistContextMenuItems(artists: song.artists)
             Button {
                 Task {
                     let allSongs = await self.viewModel.getAllSongs()

@@ -394,6 +394,7 @@ struct DownloadsView: View {
 
             Divider()
 
+            QueueContextMenuItems(song: download.song)
             MixtapeQuickAddMenu(song: download.song)
 
             Button(role: .destructive) {

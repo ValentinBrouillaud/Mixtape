@@ -37,6 +37,7 @@ struct AppCoordinatorView: View {
                 miniPlayerOverlay(videoId: videoId)
             }
         }
+        .environment(\.openArtist, openArtist)
         .animation(.easeInOut(duration: 0.2), value: playerManager.showMiniPlayer)
         .overlay {
             if coordinator.showCommandBarSheet {
@@ -51,6 +52,20 @@ struct AppCoordinatorView: View {
         }
         .onChange(of: coordinator.libraryCoordinator.libraryViewModel.playlists) { _, playlists in
             coordinator.restorePendingPlaylistSelection(from: playlists)
+        }
+    }
+
+    private func openArtist(_ artist: Artist) {
+        guard artist.hasNavigableBrowseID else { return }
+        switch coordinator.navigationSelection {
+        case .search:
+            coordinator.searchCoordinator.didSelectArtist(artist)
+        case .explore:
+            coordinator.discoverCoordinator.didSelectArtist(artist)
+        case .library, .libraryArtists, .libraryAlbums, .libraryPlaylist:
+            coordinator.libraryCoordinator.didSelectArtist(artist)
+        case .home, .none:
+            coordinator.homeCoordinator.didSelectArtist(artist)
         }
     }
 

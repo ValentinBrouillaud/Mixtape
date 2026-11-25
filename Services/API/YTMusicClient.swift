@@ -86,6 +86,31 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     // MARK: - Charts
 
+    /// Country selection belongs to this request, independent of the app's
+    /// recommendation region and of the global charts continuation cursor.
+    func getRegionalCharts(country: String) async throws -> RegionalChartDirectory {
+        guard RegionalChartDirectory.countries.contains(country) else {
+            throw YTMusicError.apiError(message: "Unsupported chart country", code: nil)
+        }
+        let data = try await request("browse", body: [
+            "browseId": "FEmusic_charts",
+            "formData": ["selectedValues": [country]],
+        ])
+        let directory = RegionalChartDirectory(json: data)
+        var evidence: [String: String] = [:]
+        let unspecified = directory.charts.filter {
+            $0.period == .current && $0.title.range(of: #"top\s*(50|100)"#, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        for chart in unspecified.prefix(3) {
+            try Task.checkCancellation()
+            if let details = try? await request("browse", body: ["browseId": "VL" + chart.id]) {
+                evidence[chart.id] = RegionalChartDirectory.sourceDescription(in: details)
+            }
+        }
+        try Task.checkCancellation()
+        return RegionalChartDirectory(json: data, periodEvidence: evidence)
+    }
+
     /// Internal storage for charts continuation token.
     private var _chartsContinuationToken: String?
 

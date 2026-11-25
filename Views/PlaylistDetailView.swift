@@ -127,15 +127,12 @@ struct PlaylistDetailView: View {
                 Divider()
 
                 DownloadContextMenuItems(song: track)
+                QueueContextMenuItems(song: track)
                 MixtapeQuickAddMenu(song: track)
 
                 Divider()
 
-                if let artist = track.artists.first(where: { !$0.id.isEmpty && $0.id != UUID().uuidString }) {
-                    NavigationLink(value: artist) {
-                        Label("Go to Artist", systemImage: "person")
-                    }
-                }
+                ArtistContextMenuItems(artists: track.artists)
 
                 if let album = track.album, album.hasNavigableId {
                     let playlist = Playlist(
@@ -762,7 +759,7 @@ private struct TrackRowView: View {
                     .lineLimit(1)
 
                 if !track.artistsDisplay.isEmpty {
-                    Text(track.artistsDisplay)
+                    ArtistLinksView(artists: track.artists)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
