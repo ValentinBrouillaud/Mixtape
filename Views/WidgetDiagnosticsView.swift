@@ -1,0 +1,88 @@
+import FactoryKit
+import SwiftUI
+
+/// Reports app publication and the extension's own acknowledgement separately.
+struct WidgetDiagnosticsView: View {
+    @Injected(\.playerManager) private var player
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var bridge = WidgetSnapshotBridge.shared
+    @State private var receipt: MixtapeWidgetReadReceipt?
+
+    private func text(_ key: String.LocalizationValue) -> String {
+        String(localized: key, table: "WidgetStatus")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent(text("Data sharing")) {
+                    Text(MixtapeWidgetStorage.containerURL == nil ? text("Unavailable") : text("Available"))
+                }
+                LabeledContent(text("Last publication")) {
+                    if let date = bridge.lastPublishedAt {
+                        Text(date, style: .time)
+                    } else { Text(text("Not yet published")) }
+                }
+                LabeledContent(text("Published title")) {
+                    Text(bridge.lastPublishedTitle ?? text("No track selected")).lineLimit(2)
+                }
+                LabeledContent(text("Playlists"), value: "\(bridge.lastPublishedPlaylistCount)")
+                LabeledContent(text("Last extension read")) {
+                    if let receipt { Text(receipt.readAt, style: .time) }
+                    else { Text(text("Not yet confirmed")) }
+                }
+            } footer: {
+                if bridge.publicationIssue == .sharedContainerUnavailable {
+                    Text("Mixtape cannot share widget data. Signing must allow the same shared group for the app and its extension.", tableName: "WidgetStatus")
+                } else if bridge.publicationIssue != nil {
+                    Text("Widget data could not be saved. Try refreshing the widgets.", tableName: "WidgetStatus")
+                } else {
+                    Text("A publication confirms the app saved its data. An extension read confirms a widget accessed it. iOS controls when widgets refresh.", tableName: "WidgetStatus")
+                }
+            }
+            Section {
+                Button { refresh() } label: {
+                    Label {
+                        Text("Refresh widgets", tableName: "WidgetStatus")
+                    } icon: { Image(systemName: "arrow.clockwise") }
+                }
+                ShareLink(item: diagnosticText) {
+                    Label {
+                        Text("Share widget diagnostic", tableName: "WidgetStatus")
+                    } icon: { Image(systemName: "square.and.arrow.up") }
+                }
+            } footer: {
+                Text("After installing, open Mixtape and play a song. In Sideloadly, keep the widget extension enabled.", tableName: "WidgetStatus")
+            }
+        }
+        .navigationTitle(Text("Widgets", tableName: "WidgetStatus"))
+        .task { refresh() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { receipt = MixtapeWidgetStorage.lastReceipt() }
+        }
+        .onChange(of: bridge.lastPublishedAt) { _, _ in receipt = MixtapeWidgetStorage.lastReceipt() }
+    }
+
+    private func refresh() {
+        bridge.updateHistory(ListeningHistoryStore.shared.entries)
+        bridge.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
+        bridge.updatePlayback(song: player.currentTrack, isPlaying: player.isPlaying)
+        receipt = MixtapeWidgetStorage.lastReceipt()
+    }
+
+    private var diagnosticText: String {
+        let date: (Date?) -> String = { $0.map { ISO8601DateFormatter().string(from: $0) } ?? "none" }
+        let info = Bundle.main.infoDictionary ?? [:]
+        return [
+            "Mixtape widget diagnostic",
+            "version: \(info["CFBundleShortVersionString"] ?? "unknown") (\(info["CFBundleVersion"] ?? "unknown"))",
+            "app: \(Bundle.main.bundleIdentifier ?? "unknown")",
+            "sharedGroup: \(MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? "unavailable")",
+            "publicationIssue: \(bridge.publicationIssue.map { String(describing: $0) } ?? "none")",
+            "lastPublication: \(date(bridge.lastPublishedAt))",
+            "lastExtensionRead: \(date(receipt?.readAt))",
+            "extensionSnapshot: \(date(receipt?.snapshotUpdatedAt))",
+            "extensionGroup: \(receipt?.appGroupIdentifier ?? "unavailable")"
+        ].joined(separator: "\n")
+    }
+}

@@ -27,6 +27,7 @@ struct MixtapeApp: App {
 
     /// Root coordinator for YTMusic mode.
     @State private var appCoordinator = AppCoordinator()
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Observe content language changes to update locale.
     @AppStorage(AppDefaults.Keys.contentLanguage) private var contentLanguage: String = ContentLanguage.systemDefault.rawValue
@@ -43,9 +44,10 @@ struct MixtapeApp: App {
                 .environment(\.showCommandBar, $showCommandBar)
                 .environment(\.locale, appLocale)
                 .task {
-                    WidgetSnapshotBridge.shared.updateHistory(ListeningHistoryStore.shared.entries)
-                    WidgetSnapshotBridge.shared.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
-                    WidgetSnapshotBridge.shared.updatePlayback(song: playerManager.currentTrack, isPlaying: playerManager.isPlaying)
+                    refreshWidgetData()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { refreshWidgetData() }
                 }
                 .onOpenURL { url in
                     Task { @MainActor in await openWidgetURL(url) }
@@ -182,6 +184,12 @@ struct MixtapeApp: App {
         }
         .defaultSize(width: 450, height: 600)
         #endif
+    }
+
+    private func refreshWidgetData() {
+        WidgetSnapshotBridge.shared.updateHistory(ListeningHistoryStore.shared.entries)
+        WidgetSnapshotBridge.shared.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
+        WidgetSnapshotBridge.shared.updatePlayback(song: playerManager.currentTrack, isPlaying: playerManager.isPlaying)
     }
 
     private func openWidgetURL(_ url: URL) async {

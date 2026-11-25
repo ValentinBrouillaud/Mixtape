@@ -36,6 +36,7 @@ struct FavoritePlaylistIntent: WidgetConfigurationIntent {
 struct FavoritePlaylistEntry: TimelineEntry {
     let date: Date
     let playlist: MixtapeWidgetPlaylist?
+    var storageIssue: MixtapeWidgetReadIssue? = nil
 }
 
 struct FavoritePlaylistProvider: AppIntentTimelineProvider {
@@ -52,10 +53,12 @@ struct FavoritePlaylistProvider: AppIntentTimelineProvider {
     }
 
     private func makeEntry(_ configuration: FavoritePlaylistIntent) -> FavoritePlaylistEntry {
-        let playlists = MixtapeWidgetStorage.load().playlists
+        let result = MixtapeWidgetStorage.read()
+        MixtapeWidgetStorage.acknowledge(result)
+        let playlists = result.snapshot.playlists
         let selected: MixtapeWidgetPlaylist?
         if let chosen = configuration.playlist { selected = playlists.first { $0.id == chosen.id } }
         else { selected = playlists.first }
-        return FavoritePlaylistEntry(date: Date(), playlist: selected)
+        return FavoritePlaylistEntry(date: Date(), playlist: selected, storageIssue: result.issue)
     }
 }

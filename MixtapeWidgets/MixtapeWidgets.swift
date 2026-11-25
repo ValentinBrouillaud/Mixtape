@@ -15,6 +15,7 @@ struct MixtapeWidgetBundle: WidgetBundle {
 struct MixtapeTimelineEntry: TimelineEntry {
     let date: Date
     let snapshot: MixtapeWidgetSnapshot
+    var storageIssue: MixtapeWidgetReadIssue? = nil
 }
 
 struct MixtapeTimelineProvider: TimelineProvider {
@@ -23,11 +24,15 @@ struct MixtapeTimelineProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (MixtapeTimelineEntry) -> Void) {
-        completion(MixtapeTimelineEntry(date: Date(), snapshot: MixtapeWidgetStorage.load()))
+        let result = MixtapeWidgetStorage.read()
+        MixtapeWidgetStorage.acknowledge(result)
+        completion(MixtapeTimelineEntry(date: Date(), snapshot: result.snapshot, storageIssue: result.issue))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MixtapeTimelineEntry>) -> Void) {
-        let entry = MixtapeTimelineEntry(date: Date(), snapshot: MixtapeWidgetStorage.load())
+        let result = MixtapeWidgetStorage.read()
+        MixtapeWidgetStorage.acknowledge(result)
+        let entry = MixtapeTimelineEntry(date: Date(), snapshot: result.snapshot, storageIssue: result.issue)
         completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 30))))
     }
 }
@@ -71,12 +76,42 @@ private struct WidgetBrand: View {
 struct MixtapeResumeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "MixtapeResume", provider: MixtapeTimelineProvider()) { entry in
-            ResumeWidgetView(snapshot: entry.snapshot)
-                .containerBackground(WidgetStyle.background, for: .widget)
+            Group {
+                if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
+                else { ResumeWidgetView(snapshot: entry.snapshot) }
+            }.containerBackground(WidgetStyle.background, for: .widget)
         }
         .configurationDisplayName("Resume")
         .description("Open Mixtape and resume your music.")
         .supportedFamilies([.systemSmall])
+    }
+}
+
+private struct WidgetStorageNoticeView: View {
+    let issue: MixtapeWidgetReadIssue
+
+    private var title: String {
+        switch issue {
+        case .sharedContainerUnavailable: String(localized: "Data sharing unavailable", table: "WidgetStatus")
+        case .noSnapshot: String(localized: "Open Mixtape first", table: "WidgetStatus")
+        case .unreadableSnapshot: String(localized: "Refresh widget data", table: "WidgetStatus")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            WidgetBrand()
+            Image(systemName: issue == .sharedContainerUnavailable ? "exclamationmark.triangle" : "arrow.clockwise")
+                .font(.title2).foregroundStyle(WidgetStyle.red)
+            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+            Text("Check Widgets in Mixtape settings.", tableName: "WidgetStatus")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7)).lineLimit(3)
+            Spacer(minLength: 0)
+            Text("Open Mixtape", tableName: "WidgetStatus")
+                .font(.system(size: 10, weight: .bold)).foregroundStyle(WidgetStyle.red)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .widgetURL(MixtapeWidgetRoute.library.url)
     }
 }
 
@@ -108,8 +143,10 @@ private struct ResumeWidgetView: View {
 struct MixtapeRecentsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "MixtapeRecents", provider: MixtapeTimelineProvider()) { entry in
-            RecentsWidgetView(snapshot: entry.snapshot)
-                .containerBackground(WidgetStyle.background, for: .widget)
+            Group {
+                if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
+                else { RecentsWidgetView(snapshot: entry.snapshot) }
+            }.containerBackground(WidgetStyle.background, for: .widget)
         }
         .configurationDisplayName("Recent Listening")
         .description("Your latest song and four recent favorites, ready to open in Mixtape.")
@@ -156,8 +193,10 @@ private struct RecentsWidgetView: View {
 struct MixtapeFavoritePlaylistWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "MixtapeFavoritePlaylist", intent: FavoritePlaylistIntent.self, provider: FavoritePlaylistProvider()) { entry in
-            FavoritePlaylistWidgetView(playlist: entry.playlist)
-                .containerBackground(WidgetStyle.background, for: .widget)
+            Group {
+                if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
+                else { FavoritePlaylistWidgetView(playlist: entry.playlist) }
+            }.containerBackground(WidgetStyle.background, for: .widget)
         }
         .configurationDisplayName("Favorite Playlist")
         .description("Choose a Mixtape playlist to open with one tap.")

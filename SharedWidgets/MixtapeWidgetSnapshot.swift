@@ -27,30 +27,6 @@ nonisolated struct MixtapeWidgetSnapshot: Codable, Equatable, Sendable {
     }
 }
 
-/// Both targets read this small, atomic metadata snapshot. The extension never loads audio.
-nonisolated enum MixtapeWidgetStorage {
-    static let appGroup = "group.com.alexcding.mixtape"
-    static let snapshotFileName = "widget-snapshot.json"
-
-    static var containerURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-            .appendingPathComponent("MixtapeWidgets", isDirectory: true)
-    }
-
-    static func load() -> MixtapeWidgetSnapshot {
-        guard let root = containerURL,
-              let data = try? Data(contentsOf: root.appendingPathComponent(snapshotFileName)),
-              let snapshot = try? JSONDecoder().decode(MixtapeWidgetSnapshot.self, from: data) else { return .empty }
-        return snapshot
-    }
-
-    static func artworkURL(fileName: String?) -> URL? {
-        guard let fileName, !fileName.isEmpty, fileName == (fileName as NSString).lastPathComponent,
-              ![".", ".."].contains(fileName), let root = containerURL else { return nil }
-        return root.appendingPathComponent("Artwork", isDirectory: true).appendingPathComponent(fileName)
-    }
-}
-
 nonisolated enum MixtapeWidgetRoute: Equatable, Sendable {
     case resume
     case library

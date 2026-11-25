@@ -1,7 +1,7 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.1 (build 41)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
@@ -20,7 +20,16 @@ there is also a link to official YouTube Charts.
 
 Widgets open Mixtape to resume, replay a recent track or open a chosen local
 playlist. Both app and widget extension share metadata through the App Group
-`group.com.alexcding.mixtape`; sideload signing must preserve that shared group.
+`group.com.alexcding.mixtape`; sideload signing must provision and preserve a
+common authorized group for both bundles. Build 41 embeds that request in
+temporary ad-hoc signatures before packaging so a re-signing tool can read it;
+the original fully unsigned build 40 did not contain those entitlement requests.
+Ad-hoc preparation does not itself authorize installation or create a profile.
+The app and extension also discover concrete renamed group hints in their
+embedded profiles, accepting them only when the OS allows the shared container.
+Unknown profile formats fall back to explicit configuration and the original ID.
+Settings > Widgets reports app publication separately from an extension receipt.
+Unavailable sharing and corrupt/missing snapshots now have distinct widget states.
 The extension does not stream or download audio. Open Mixtape once after install
 so it can populate the widget snapshot. Widget publication and tap routing need
 a physical iOS 18 device check after signing.

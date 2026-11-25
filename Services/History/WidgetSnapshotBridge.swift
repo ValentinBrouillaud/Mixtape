@@ -7,9 +7,15 @@ import WidgetKit
 
 /// App-only publisher. No player, authentication or audio download code runs in widgets.
 @MainActor
+@Observable
 final class WidgetSnapshotBridge {
     static let shared = WidgetSnapshotBridge()
+    private(set) var lastPublishedAt: Date?
+    private(set) var publicationIssue: MixtapeWidgetReadIssue?
+    private(set) var lastPublishedTitle: String?
+    private(set) var lastPublishedPlaylistCount = 0
     private var snapshot = MixtapeWidgetStorage.load()
+    private var publicationGeneration = 0
     private var playlistArtworkCandidates: [String: [String]] = [:]
     private let writeQueue = DispatchQueue(label: "com.alexcding.mixtape.widget-snapshot")
 
@@ -44,8 +50,17 @@ final class WidgetSnapshotBridge {
 
     func refreshArtwork() { publish() }
 
+    /// Explicitly retry publication when returning to the app or diagnosing widgets.
+    func refresh() { publish() }
+
     private func publish() {
-        guard let root = MixtapeWidgetStorage.containerURL else { return }
+        publicationGeneration &+= 1
+        let generation = publicationGeneration
+        guard let root = MixtapeWidgetStorage.containerURL else {
+            publicationIssue = .sharedContainerUnavailable
+            DiagnosticsLogger.ui.error("Widget publication unavailable: no accessible shared container")
+            return
+        }
         var sources: [String: URL] = [:]
         func withArtwork(_ song: MixtapeWidgetSong) -> MixtapeWidgetSong {
             var result = song
@@ -87,10 +102,21 @@ final class WidgetSnapshotBridge {
                     if !retained.contains(existing.lastPathComponent) { try? FileManager.default.removeItem(at: existing) }
                 }
                 #if canImport(WidgetKit)
-                Task { @MainActor in WidgetCenter.shared.reloadAllTimelines() }
+                Task { @MainActor [weak self] in
+                    WidgetCenter.shared.reloadAllTimelines()
+                    guard let self, self.publicationGeneration == generation else { return }
+                    self.lastPublishedAt = pending.updatedAt
+                    self.lastPublishedTitle = pending.currentSong?.title ?? pending.recentSongs.first?.title
+                    self.lastPublishedPlaylistCount = pending.playlists.count
+                    self.publicationIssue = nil
+                }
                 #endif
             } catch {
                 DiagnosticsLogger.ui.error("Unable to publish widget metadata: \(error.localizedDescription)")
+                Task { @MainActor [weak self] in
+                    guard let self, self.publicationGeneration == generation else { return }
+                    self.publicationIssue = .unreadableSnapshot
+                }
             }
         }
     }

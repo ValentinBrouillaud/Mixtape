@@ -106,6 +106,18 @@ struct SettingsView: View {
                 }
 
                 // MARK: - Native audio events (v35)
+                Section {
+                    NavigationLink {
+                        WidgetDiagnosticsView()
+                    } label: {
+                        Label {
+                            Text("Widget status", tableName: "WidgetStatus")
+                        } icon: { Image(systemName: "square.grid.2x2") }
+                    }
+                } header: {
+                    Text("Widgets", tableName: "WidgetStatus")
+                }
+
                 if !nativeTraceV35.isEmpty {
                     Section {
                         Text(nativeTraceV35)
