@@ -69,6 +69,13 @@ def main() -> int:
     for binary in sorted(set(candidates)):
         entry = {"binary": str(binary.relative_to(args.app))}
         try:
+            architecture = subprocess.run(
+                ["xcrun", "lipo", "-archs", str(binary)],
+                text=True, capture_output=True, check=False,
+            )
+            entry["architectures"] = architecture.stdout.split()
+            if architecture.returncode != 0 or entry["architectures"] != ["arm64"]:
+                problems.append(f"{entry['binary']} must contain arm64 only: {entry['architectures']}")
             entry["minimumIOS"] = minimum_versions(binary)
             if any(version_tuple(value) > (18, 0, 0) for value in entry["minimumIOS"]):
                 problems.append(f"{entry['binary']} requires iOS {entry['minimumIOS']}")

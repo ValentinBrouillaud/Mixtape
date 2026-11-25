@@ -4,10 +4,17 @@ from __future__ import annotations
 import plistlib
 import unittest
 
-from validate_widget_signing import APP_GROUP_KEY, HOST_BUNDLE_ID, WIDGET_BUNDLE_ID, entitlement_problems, metadata_problems, parse_codesign_entitlements, signature_details
+from validate_widget_signing import APP_GROUP_KEY, HOST_BUNDLE_ID, WIDGET_BUNDLE_ID, digest_choices, entitlement_problems, metadata_problems, parse_codesign_entitlements, signature_details
 
 
 class WidgetSigningTests(unittest.TestCase):
+    def test_legacy_dual_hashes_are_visible(self):
+        self.assertEqual(digest_choices(b"", b"Hash type=sha1 size=20\nHash choices=sha1,sha256\n"), ["sha1", "sha256"])
+
+    def test_modern_single_hash_can_be_confirmed(self):
+        self.assertEqual(digest_choices(b"Hash type=sha256 size=32\n", b""), ["sha256"])
+        self.assertEqual(digest_choices(b"", b"unreadable"), [])
+
     def test_xml_stdout_with_diagnostics_on_stderr(self):
         expected = {APP_GROUP_KEY: ["group.com.example.mixtape"]}
         self.assertEqual(parse_codesign_entitlements(plistlib.dumps(expected), b"Executable=/tmp/Mixtape.app/Mixtape\n"), expected)

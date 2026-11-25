@@ -1,7 +1,7 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40.1 (build 41)**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.2 (build 42)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
@@ -33,6 +33,13 @@ Unavailable sharing and corrupt/missing snapshots now have distinct widget state
 The extension does not stream or download audio. Open Mixtape once after install
 so it can populate the widget snapshot. Widget publication and tap routing need
 a physical iOS 18 device check after signing.
+
+Build 42 prepares the embedded MobileVLCKit framework as arm64-only, checking
+that thinning preserves the original arm64 payload byte for byte before signing.
+Preparation signatures use SHA-256 only, and the IPA stores Info.plist entries
+without compression while verifying that every signed file remains unchanged.
+These checks validate the package before a signing tool processes it; installation
+and widget sharing after Sideloadly re-signing still require an iPhone check.
 
 Additional ideas (sleep timer, playlist search, Wi-Fi-only downloads) remain
 unimplemented pending the user's approval.

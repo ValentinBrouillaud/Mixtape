@@ -1,4 +1,4 @@
-name: Mixtape - iOS 18 v40.1 Widget Fix
+name: Mixtape - iOS 18 v40.2 Signing Compatibility
 
 on:
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Mixtape-iOS18-Native-v40.1-test-diagnostics
+          name: Mixtape-iOS18-Native-v40.2-test-diagnostics
           path: test-ios18-v40/logs/
           if-no-files-found: warn
           retention-days: 14
@@ -71,7 +71,7 @@ jobs:
       DERIVED_DATA: ${{ github.workspace }}/build-ios18-v40/DerivedData
       SPM_SOURCES: ${{ github.workspace }}/build-ios18-v40/SourcePackages
       LOG_DIR: ${{ github.workspace }}/build-ios18-v40/logs
-      IPA_NAME: Mixtape-iOS18-Native-v40.1-resign.ipa
+      IPA_NAME: Mixtape-iOS18-Native-v40.2-resign.ipa
 
     steps:
       - name: Check out persisted iOS 18 sources
@@ -97,6 +97,7 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_ios18_sources.py --report "$LOG_DIR/source-validation.json"
           python3 scripts/test_widget_signing.py
+          python3 scripts/test_ios18_packaging.py
 
       # Package-only tests do not inherit the app's actor isolation defaults.
       - name: Typecheck persisted value models with app isolation defaults
@@ -150,8 +151,15 @@ jobs:
             -derivedDataPath "$DERIVED_DATA" \
             -clonedSourcePackagesDirPath "$SPM_SOURCES" \
             -jobs 2 -skipMacroValidation \
-            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=1.0.40 CURRENT_PROJECT_VERSION=41 \
+            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=1.0.40 CURRENT_PROJECT_VERSION=42 \
             build 2>&1 | tee "$LOG_DIR/xcodebuild.log"
+
+      - name: Prepare arm64-only embedded frameworks
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$DERIVED_DATA/Build/Products/Debug-iphoneos/Mixtape.app"
+          python3 scripts/prepare_ios18_frameworks.py "$APP" --report "$LOG_DIR/framework-architectures.json"
 
       - name: Validate app and embedded iOS minimum versions
         shell: bash
@@ -170,7 +178,7 @@ jobs:
           set -euo pipefail
           APP="$DERIVED_DATA/Build/Products/Debug-iphoneos/Mixtape.app"
           bash scripts/prepare_widget_signing.sh "$APP" \
-            --group group.com.alexcding.mixtape --expected-build 41 \
+            --group group.com.alexcding.mixtape --expected-build 42 \
             --report "$LOG_DIR/widget-signing.json"
 
       - name: Package IPA prepared for sideloading
@@ -181,15 +189,18 @@ jobs:
           mkdir -p "$BUILD_ROOT/package/Payload"
           ditto "$APP" "$BUILD_ROOT/package/Payload/Mixtape.app"
           cd "$BUILD_ROOT/package"
-          ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/$IPA_NAME"
+          ditto -c -k --sequesterRsrc --keepParent Payload "$BUILD_ROOT/prepackaged.ipa"
+          python3 "$GITHUB_WORKSPACE/scripts/repack_sideload_ipa.py" \
+            "$BUILD_ROOT/prepackaged.ipa" "$GITHUB_WORKSPACE/$IPA_NAME" \
+            --report "$LOG_DIR/ipa-packaging.json"
           unzip -tq "$GITHUB_WORKSPACE/$IPA_NAME"
           shasum -a 256 "$GITHUB_WORKSPACE/$IPA_NAME" > "$LOG_DIR/ipa-sha256.txt"
 
       - name: Upload IPA prepared for resigning
         uses: actions/upload-artifact@v4
         with:
-          name: Mixtape-iOS18-Native-v40.1-IPA
-          path: Mixtape-iOS18-Native-v40.1-resign.ipa
+          name: Mixtape-iOS18-Native-v40.2-IPA
+          path: Mixtape-iOS18-Native-v40.2-resign.ipa
           if-no-files-found: error
           retention-days: 14
 
@@ -208,7 +219,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Mixtape-iOS18-Native-v40.1-diagnostics
+          name: Mixtape-iOS18-Native-v40.2-diagnostics
           path: build-ios18-v40/logs/
           if-no-files-found: warn
           retention-days: 14

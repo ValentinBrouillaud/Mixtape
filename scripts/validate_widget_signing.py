@@ -84,6 +84,15 @@ def signature_details(stdout: bytes, stderr: bytes) -> dict[str, Any]:
     }
 
 
+def digest_choices(stdout: bytes, stderr: bytes) -> list[str]:
+    text = (stdout + b"\n" + stderr).decode("utf-8", errors="replace")
+    choices = re.search(r"(?m)^Hash choices=([^\r\n]+)", text)
+    if choices:
+        return [value.strip() for value in choices.group(1).split(",")]
+    single = re.search(r"(?m)^Hash type=(\S+)", text)
+    return [single.group(1)] if single else []
+
+
 def run_codesign(arguments: list[str]) -> subprocess.CompletedProcess[bytes]:
     result = subprocess.run(
         ["/usr/bin/codesign", *arguments], capture_output=True,
@@ -157,17 +166,19 @@ def prepare(app: Path, widget: Path, group: str, libraries: list[Path]) -> None:
         entitlements = Path(temporary) / "shared-group.plist"
         entitlements.write_bytes(plistlib.dumps({APP_GROUP_KEY: [group]}))
         for library in libraries:
-            run_codesign(["--force", "--sign", "-", "--timestamp=none", str(library)])
+            run_codesign(["--force", "--sign", "-", "--timestamp=none", "--digest-algorithm=sha256", str(library)])
         for bundle in (widget, app):
             run_codesign([
                 "--force", "--sign", "-", "--timestamp=none",
+                "--digest-algorithm=sha256",
                 "--generate-entitlement-der", "--entitlements", str(entitlements), str(bundle),
             ])
 
 
-def inspect(app: Path, widget: Path, group: str, libraries: list[Path]) -> tuple[list[dict[str, Any]], list[str]]:
+def inspect(app: Path, widget: Path, group: str, libraries: list[Path]) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     entries = []
     problems = []
+    library_signatures = []
     for bundle in (app, widget):
         info = read_bundle(bundle)
         entry = {
@@ -183,6 +194,9 @@ def inspect(app: Path, widget: Path, group: str, libraries: list[Path]) -> tuple
         problems.extend(f"{entry['bundle']}: {problem}" for problem in entitlement_problems(entitlements, group))
         signature = run_codesign(["--display", "--verbose=4", str(bundle)])
         entry.update(signature_details(signature.stdout, signature.stderr))
+        entry["hashAlgorithms"] = digest_choices(signature.stdout, signature.stderr)
+        if entry["hashAlgorithms"] != ["sha256"]:
+            problems.append(f"{entry['bundle']}: Expected SHA-256-only preparation signatures")
         if not entry["adHoc"]:
             problems.append(f"{entry['bundle']}: Expected a temporary ad-hoc signature")
         if (entry["codeDirectoryVersion"] or 0) < 20400:
@@ -196,7 +210,12 @@ def inspect(app: Path, widget: Path, group: str, libraries: list[Path]) -> tuple
         result = run_codesign(["--display", "--entitlements", "-", "--xml", str(library)])
         if parse_codesign_entitlements(result.stdout, result.stderr):
             problems.append(f"{library.relative_to(app).as_posix()}: Libraries must not claim entitlements")
-    return entries, problems
+        details = run_codesign(["--display", "--verbose=4", str(library)])
+        hashes = digest_choices(details.stdout, details.stderr)
+        if hashes != ["sha256"]:
+            problems.append(f"{library.relative_to(app).as_posix()}: Expected SHA-256-only library signatures")
+        library_signatures.append({"binary": library.relative_to(app).as_posix(), "hashAlgorithms": hashes})
+    return entries, problems, library_signatures
 
 
 def main() -> int:
@@ -214,6 +233,7 @@ def main() -> int:
         "appGroup": args.group,
         "bundles": [],
         "embeddedLibraries": [],
+        "librarySignatures": [],
         "problems": [],
     }
     try:
@@ -240,8 +260,9 @@ def main() -> int:
         report["embeddedLibraries"] = [path.relative_to(app).as_posix() for path in libraries]
         if args.prepare:
             prepare(app, widget, args.group, libraries)
-        entries, problems = inspect(app, widget, args.group, libraries)
+        entries, problems, library_signatures = inspect(app, widget, args.group, libraries)
         report["bundles"] = entries
+        report["librarySignatures"] = library_signatures
         report["problems"].extend(problems)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         report["problems"].append(str(error))
