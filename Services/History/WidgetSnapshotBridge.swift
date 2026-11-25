@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 #if canImport(WidgetKit)
 import WidgetKit
 #endif

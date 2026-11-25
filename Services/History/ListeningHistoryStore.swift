@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// A device-local list of the last 100 distinct songs actually heard.
 /// Recording history never queues an audio download or requests playback.
