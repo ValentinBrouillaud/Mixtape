@@ -1070,7 +1070,13 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
     func resume() async {
         self.logger.debug("Resuming playback")
         self.isPaused = false
-        if case .error = state, let currentTrack {
+        if state == .idle, let currentTrack {
+            // A restored queue has metadata but no loaded AVPlayer session.
+            // Queue-row and lock-screen Play must load it before requesting sound.
+            await play(song: currentTrack)
+        } else if state == .idle, let queued = playbackQueue.upcoming.first {
+            await playFromQueue(id: queued.id)
+        } else if case .error = state, let currentTrack {
             await play(song: currentTrack)
         } else {
             if state == .ended {

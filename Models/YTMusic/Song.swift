@@ -3,7 +3,7 @@ import Foundation
 // MARK: - VideoType
 
 /// Represents the type of music video content.
-enum VideoType: String, Codable, Sendable {
+nonisolated enum VideoType: String, Codable, Sendable {
     /// Audio Track Video - audio-only content with static/visualizer image
     case atv = "MUSIC_VIDEO_TYPE_ATV"
     /// Official Music Video
@@ -15,7 +15,7 @@ enum VideoType: String, Codable, Sendable {
 // MARK: - Song
 
 /// Represents a song/track.
-struct Song: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct Song: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let title: String
     let artists: [Artist]

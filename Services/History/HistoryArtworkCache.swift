@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import ImageIO
 import Observation
 
 /// Keeps small history thumbnails across launches without downloading audio.
@@ -126,17 +125,6 @@ final class HistoryArtworkCache {
             guard data.count < maximumImageBytes else { throw CocoaError(.fileReadTooLarge) }
             data.append(byte)
         }
-        guard !data.isEmpty,
-              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-              CGImageSourceGetCount(source) > 0,
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              width > 0, height > 0, width <= 4096, height <= 4096,
-              CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 256,
-              ] as CFDictionary) != nil else { throw CocoaError(.fileReadCorruptFile) }
-        return data
+        return try HistoryThumbnail.encode(data)
     }
 }

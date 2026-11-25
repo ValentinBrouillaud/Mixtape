@@ -18,6 +18,7 @@ let package = Package(
                 "Services/API/Models/PlayerResponse.swift",
                 "Services/Charts/RegionalChartDirectory.swift",
                 "Services/History/ListeningHistoryPolicy.swift",
+                "Services/History/HistoryThumbnail.swift",
                 "Models/PlaybackQueue.swift",
             ]
         ),
