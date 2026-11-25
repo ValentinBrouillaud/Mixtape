@@ -100,13 +100,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "?coutes r?centes"
+            "value": "Écoutes récentes"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "?coutes r?centes"
+            "value": "Écoutes récentes"
           }
         }
       }
@@ -122,13 +122,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre dernier titre et quatre ?coutes r?centes ? retrouver dans Mixtape."
+            "value": "Votre dernier titre et quatre écoutes récentes à retrouver dans Mixtape."
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre dernier titre et quatre ?coutes r?centes ? retrouver dans Mixtape."
+            "value": "Votre dernier titre et quatre écoutes récentes à retrouver dans Mixtape."
           }
         }
       }
@@ -144,13 +144,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "?cout?s r?cemment"
+            "value": "Écoutés récemment"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "?cout?s r?cemment"
+            "value": "Écoutés récemment"
           }
         }
       }
@@ -210,13 +210,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisissez la playlist ? ouvrir depuis ce widget."
+            "value": "Choisissez la playlist à ouvrir depuis ce widget."
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisissez la playlist ? ouvrir depuis ce widget."
+            "value": "Choisissez la playlist à ouvrir depuis ce widget."
           }
         }
       }

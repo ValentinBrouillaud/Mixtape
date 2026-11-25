@@ -12,13 +12,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Historique d??coute"
+            "value": "Historique d’écoute"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Historique d??coute"
+            "value": "Historique d’écoute"
           }
         }
       }
@@ -56,13 +56,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun titre dans l?historique"
+            "value": "Aucun titre dans l’historique"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun titre dans l?historique"
+            "value": "Aucun titre dans l’historique"
           }
         }
       }
@@ -78,13 +78,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les titres apparaissent ici apr?s quelques secondes d??coute."
+            "value": "Les titres apparaissent ici après quelques secondes d’écoute."
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les titres apparaissent ici apr?s quelques secondes d??coute."
+            "value": "Les titres apparaissent ici après quelques secondes d’écoute."
           }
         }
       }
@@ -100,13 +100,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "L?historique est conserv? sur cet appareil. Les titres ne sont pas t?l?charg?s."
+            "value": "L’historique est conservé sur cet appareil. Les titres ne sont pas téléchargés."
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "L?historique est conserv? sur cet appareil. Les titres ne sont pas t?l?charg?s."
+            "value": "L’historique est conservé sur cet appareil. Les titres ne sont pas téléchargés."
           }
         }
       }
@@ -144,13 +144,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Retirer de l?historique"
+            "value": "Retirer de l’historique"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Retirer de l?historique"
+            "value": "Retirer de l’historique"
           }
         }
       }
@@ -166,13 +166,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effacer l?historique"
+            "value": "Effacer l’historique"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effacer l?historique"
+            "value": "Effacer l’historique"
           }
         }
       }
@@ -188,13 +188,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effacer l?historique d??coute ?"
+            "value": "Effacer l’historique d’écoute ?"
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "Effacer l?historique d??coute ?"
+            "value": "Effacer l’historique d’écoute ?"
           }
         }
       }
@@ -210,13 +210,13 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La liste locale sera effac?e. Votre biblioth?que et vos titres t?l?charg?s sont conserv?s."
+            "value": "La liste locale sera effacée. Votre bibliothèque et vos titres téléchargés sont conservés."
           }
         },
         "fr-CA": {
           "stringUnit": {
             "state": "translated",
-            "value": "La liste locale sera effac?e. Votre biblioth?que et vos titres t?l?charg?s sont conserv?s."
+            "value": "La liste locale sera effacée. Votre bibliothèque et vos titres téléchargés sont conservés."
           }
         }
       }

@@ -57,6 +57,9 @@ struct AppCoordinatorView: View {
 
     private func openArtist(_ artist: Artist) {
         guard artist.hasNavigableBrowseID else { return }
+        #if os(iOS)
+        showFullscreenPlayer = false
+        #endif
         switch coordinator.navigationSelection {
         case .search:
             coordinator.searchCoordinator.didSelectArtist(artist)
