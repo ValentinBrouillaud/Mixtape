@@ -135,19 +135,29 @@ nonisolated enum MixtapeWidgetKeychain {
 
     static func acknowledge(_ result: MixtapeWidgetReadResult, at date: Date) -> Bool {
         guard result.issue == nil, let identifier = result.sharedIdentifier,
-              let candidate = candidates(in: MixtapeWidgetStorage.environment).first(where: { $0.identifier == identifier }),
-              let data = try? JSONEncoder().encode(MixtapeWidgetReadReceipt(
-                  readAt: date, snapshotUpdatedAt: result.snapshot.updatedAt, appGroupIdentifier: identifier
-              )) else { return false }
-        return write(data, account: "receipt", candidate: candidate) == errSecSuccess
+              let candidate = candidates(in: MixtapeWidgetStorage.environment).first(where: { $0.identifier == identifier }) else { return false }
+        let (status, snapshotData, actualGroup) = readRecord(account: "snapshot", candidate: candidate)
+        guard status == errSecSuccess, let snapshotData,
+              let current = try? decode(snapshotData), current.snapshot.updatedAt == result.snapshot.updatedAt else { return false }
+        // A query without an explicit access group can read any entitled group.
+        // Reply into the group actually returned by the OS, rather than the
+        // extension's potentially different default group.
+        let actual = Candidate(group: actualGroup ?? candidate.group)
+        for target in actual == candidate ? [actual] : [actual, candidate] {
+            guard let data = try? JSONEncoder().encode(MixtapeWidgetReadReceipt(
+                readAt: date, snapshotUpdatedAt: result.snapshot.updatedAt, appGroupIdentifier: target.identifier
+            )) else { return false }
+            if write(data, account: "receipt", candidate: target) == errSecSuccess { return true }
+        }
+        return false
     }
 
     static func lastReceipt() -> MixtapeWidgetReadReceipt? {
         candidates(in: MixtapeWidgetStorage.environment).compactMap { candidate -> MixtapeWidgetReadReceipt? in
-            let (status, data) = read(account: "receipt", candidate: candidate)
+            let (status, data, actualGroup) = readRecord(account: "receipt", candidate: candidate)
             guard status == errSecSuccess, let data, data.count <= 8 * 1024,
                   let receipt = try? JSONDecoder().decode(MixtapeWidgetReadReceipt.self, from: data),
-                  candidates(in: MixtapeWidgetStorage.environment).contains(where: { $0.identifier == receipt.appGroupIdentifier }) else { return nil }
+                  [candidate.identifier, Candidate(group: actualGroup ?? candidate.group).identifier].contains(receipt.appGroupIdentifier) else { return nil }
             return receipt
         }.max { $0.readAt < $1.readAt }
     }
@@ -204,15 +214,23 @@ nonisolated enum MixtapeWidgetKeychain {
     }
 
     private static func read(account: String, candidate: Candidate) -> (OSStatus, Data?) {
+        let (status, data, _) = readRecord(account: account, candidate: candidate)
+        return (status, data)
+    }
+
+    private static func readRecord(account: String, candidate: Candidate) -> (OSStatus, Data?, String?) {
         var query = query(account: account, candidate: candidate)
         let context = LAContext()
         context.interactionNotAllowed = true
         query[kSecUseAuthenticationContext as String] = context
         query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        return (status, result as? Data)
+        let attributes = result as? [String: Any]
+        return (status, attributes?[kSecValueData as String] as? Data ?? result as? Data,
+            attributes?[kSecAttrAccessGroup as String] as? String)
     }
 
     private static func write(_ data: Data, account: String, candidate: Candidate) -> OSStatus {
