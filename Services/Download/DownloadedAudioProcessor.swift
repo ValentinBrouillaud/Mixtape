@@ -31,10 +31,11 @@ nonisolated enum DownloadedAudioProcessor {
 
     enum Failure: LocalizedError {
         case invalidAudio, cannotNormalize
+        case emptyAudioFile(String), invalidPCM(String), incompleteRead(AVAudioFramePosition)
 
         var errorDescription: String? {
             switch self {
-            case .invalidAudio: "The downloaded file contains no valid decodable audio."
+            case .invalidAudio, .emptyAudioFile, .invalidPCM, .incompleteRead: "The downloaded file contains no valid decodable audio."
             case .cannotNormalize: "The downloaded audio duration could not be corrected. Please retry the download."
             }
         }
@@ -71,7 +72,7 @@ nonisolated enum DownloadedAudioProcessor {
                 var sum: Float = 0
                 vDSP_maxmgv(channels[channel], 1, &peak, vDSP_Length(count))
                 vDSP_sve(channels[channel], 1, &sum, vDSP_Length(count))
-                guard peak.isFinite, sum.isFinite else { throw Failure.invalidAudio }
+                guard peak.isFinite, sum.isFinite else { throw Failure.invalidPCM(url.lastPathComponent) }
                 if peak > silenceThreshold {
                     for index in stride(from: count - 1, through: 0, by: -1) {
                         if abs(channels[channel][index]) > silenceThreshold {
@@ -83,7 +84,7 @@ nonisolated enum DownloadedAudioProcessor {
             }
             frames = next
         }
-        guard frames > 0 else { throw Failure.invalidAudio }
+        guard frames > 0 else { throw Failure.emptyAudioFile(url.lastPathComponent) }
         return Scan(frames: frames, sampleRate: format.sampleRate, channels: format.channelCount, lastSignalFrame: lastSignal)
     }
 
@@ -169,6 +170,7 @@ nonisolated enum DownloadedAudioProcessor {
     private static func writeAAC(from input: URL, to output: URL, frames: AVAudioFramePosition, scan: Scan, bitRate: Int?) throws {
         let reader = try AVAudioFile(forReading: input, commonFormat: .pcmFormatFloat32, interleaved: false)
         defer { reader.close() }
+        reader.framePosition = 0
         guard let buffer = AVAudioPCMBuffer(pcmFormat: reader.processingFormat, frameCapacity: 32_768) else { throw Failure.invalidAudio }
         let selectedBitRate = min(512_000, max(32_000, bitRate ?? Int(scan.channels) * 128_000))
         // Explicitly finalize AAC packets and MP4 metadata before validation;
@@ -185,9 +187,10 @@ nonisolated enum DownloadedAudioProcessor {
             try Task.checkCancellation()
             let count = AVAudioFrameCount(min(remaining, AVAudioFramePosition(buffer.frameCapacity)))
             try reader.read(into: buffer, frameCount: count)
-            guard buffer.frameLength == count else { throw Failure.invalidAudio }
+            let received = buffer.frameLength
+            guard received > 0, received <= count else { throw Failure.incompleteRead(remaining) }
             try writer.write(from: buffer)
-            remaining -= AVAudioFramePosition(count)
+            remaining -= AVAudioFramePosition(received)
         }
     }
 }
