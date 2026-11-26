@@ -574,18 +574,17 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
                           $0.id == videoId && $0.assetLocation == downloaded.assetLocation
                       }), let size = try prepared.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return }
                 let old = self.downloads[index]
-                var location = old.assetLocation
                 if prepared.url != local {
-                    location = "\(UUID().uuidString).m4a"
-                    try FileManager.default.moveItem(at: prepared.url, to: Self.audioDirectory.appendingPathComponent(location))
+                    // Keep the catalogue's existing path valid even if the
+                    // process stops before its metadata write completes.
+                    _ = try FileManager.default.replaceItemAt(local, withItemAt: prepared.url)
                 }
                 self.downloads[index] = DownloadedSong(
-                    id: old.id, song: old.song.withDuration(prepared.duration), assetLocation: location,
+                    id: old.id, song: old.song.withDuration(prepared.duration), assetLocation: old.assetLocation,
                     fileSize: Int64(size), downloadedAt: old.downloadedAt,
                     thumbnailFileName: old.thumbnailFileName
                 )
                 self.saveCatalog()
-                if location != old.assetLocation { try? FileManager.default.removeItem(at: local) }
                 MixtapeNativeAudioTrace.add("offline duration: \(prepared.originalDuration)s -> \(prepared.duration)s (\(prepared.method.rawValue))")
             } catch {
                 guard !Task.isCancelled else { return }

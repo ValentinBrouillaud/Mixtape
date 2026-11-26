@@ -4,6 +4,22 @@ import Testing
 @testable import NativeAudioTransport
 
 extension NativeRangeIntegrationTests {
+    @Test @MainActor func correctedExistingDownloadKeepsItsStableCataloguePath() async throws {
+        let root = try DurationFixture.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try DurationFixture.audio(in: root, segments: [(2, 0.25), (6, 0)])
+        let storedPath = source.lastPathComponent
+        let result = try await DownloadedAudioProcessor.prepare(at: source)
+        #expect(result.url != source)
+        _ = try FileManager.default.replaceItemAt(source, withItemAt: result.url)
+        let restored = root.appendingPathComponent(storedPath)
+        #expect(FileManager.default.fileExists(atPath: restored.path))
+        #expect(!FileManager.default.fileExists(atPath: result.url.path))
+        let measured = try DownloadedAudioProcessor.scan(at: restored)
+        #expect(abs(measured.duration - 2.2) < 0.25)
+        #expect(try DurationFixture.rms(restored, at: 1) > 0.1)
+    }
+
     @Test @MainActor func automaticCleanupRemovesTwoSilentMinutesAndPreservesQuietCodaAndGaps() async throws {
         let root = try DurationFixture.directory()
         defer { try? FileManager.default.removeItem(at: root) }
