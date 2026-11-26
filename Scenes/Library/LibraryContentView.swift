@@ -31,10 +31,11 @@ struct LibraryContentView: View {
                 artistsSection
                 downloadsSection
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .loading(viewModel.loadingState) {
             viewModel.refresh()
         }
@@ -111,8 +112,8 @@ struct LibraryContentView: View {
                 Image(systemName: "chevron.right").foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .mixtapeCard()
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -143,7 +144,7 @@ struct LibraryContentView: View {
                         selectedQuickPlaylist = playlist
                     } label: {
                         HStack(spacing: 12) {
-                            MixtapeQuickPlaylistArt(playlist: playlist, size: 66)
+                            MixtapeQuickPlaylistArt(playlist: playlist, size: 56)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(playlist.name)
                                     .font(.headline)
@@ -158,8 +159,8 @@ struct LibraryContentView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .padding(11)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                        .mixtapeCard()
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -221,7 +222,7 @@ struct LibraryContentView: View {
                                 .foregroundStyle(.tertiary)
                             Text("\(viewModel.activeDownloadCount) downloading")
                                 .font(.subheadline)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(MixtapePalette.accent)
                         }
                     }
                 }
@@ -621,6 +622,7 @@ struct MixtapeQuickPlaylistDetailView: View {
         }
         .listStyle(.plain)
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .navigationTitle(playlist?.name ?? "Playlist")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

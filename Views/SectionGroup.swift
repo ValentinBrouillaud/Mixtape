@@ -57,7 +57,7 @@ struct SectionGroup<Content: View>: View {
         #if os(macOS)
         24
         #else
-        18
+        16
         #endif
     }
 
@@ -107,8 +107,7 @@ struct SectionGroup<Content: View>: View {
         } label: {
             HStack {
                 Text(section.title)
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 23, weight: .bold))
                     .lineLimit(1)
 
                 if hasMore {

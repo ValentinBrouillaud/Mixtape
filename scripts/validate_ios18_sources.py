@@ -25,6 +25,10 @@ REQUIRED_SOURCES = (
     "Services/Player/MixtapeHTTPAudioTransfer.swift",
     "Services/Download/DownloadManager.swift",
     "Utilities/MixtapeIOS18Compat.swift",
+    "SharedWidgets/MixtapeWidgetPlayback.swift",
+    "SharedWidgets/MixtapeWidgetPlaybackIntent.swift",
+    "SharedWidgets/MixtapeAppearance.swift",
+    "Services/History/MixtapeWidgetPlaybackHost.swift",
 )
 
 
@@ -50,9 +54,15 @@ def check_sources(root: Path) -> dict:
         conditions = re.findall(r"(?m)^\s*SWIFT_ACTIVE_COMPILATION_CONDITIONS = ([^;]+);", block)
         if len(conditions) != 1 or "IOS18_COMPAT" not in conditions[0].replace('"', "").split():
             raise ValueError(f"{name}: IOS18_COMPAT compilation condition is missing")
+        if "MIXTAPE_HOST_APP" not in conditions[0].replace('"', "").split():
+            raise ValueError(f"{name}: audio widget actions must route to the host player")
         configurations.append(name)
     if sorted(configurations) != ["Debug", "Release"]:
         raise ValueError(f"Expected Debug and Release app configurations, found {configurations}")
+
+    widget_configs = [block for block in blocks if "com.alexcding.mixtape.widgets" in block]
+    if len(widget_configs) != 2 or any("MIXTAPE_HOST_APP" in block for block in widget_configs):
+        raise ValueError("Widget configurations must include the shared intent without host-only player code")
 
     for relative in REQUIRED_SOURCES:
         path = root / relative
@@ -75,6 +85,7 @@ def check_sources(root: Path) -> dict:
         "minimumIOS": "18.0",
         "requiredSources": list(REQUIRED_SOURCES),
         "backgroundAudioDeclared": True,
+        "widgetPlaybackHostRouting": True,
     }
 
 
@@ -88,7 +99,9 @@ def check_build_settings(path: Path) -> dict:
         raise ValueError("Effective Mixtape IPHONEOS_DEPLOYMENT_TARGET must be 18.0")
     if "IOS18_COMPAT" not in target.get("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "").split():
         raise ValueError("Effective Mixtape settings do not contain IOS18_COMPAT")
-    return {"minimumIOS": "18.0", "IOS18_COMPAT": True, "configuration": target.get("CONFIGURATION")}
+    if "MIXTAPE_HOST_APP" not in target.get("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "").split():
+        raise ValueError("Effective Mixtape settings do not route widget audio actions to the host player")
+    return {"minimumIOS": "18.0", "IOS18_COMPAT": True, "MIXTAPE_HOST_APP": True, "configuration": target.get("CONFIGURATION")}
 
 
 def main() -> int:

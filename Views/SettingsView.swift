@@ -19,10 +19,22 @@ struct SettingsView: View {
     @AppStorage("mixtape.ios18.allowWebFallback") private var allowWebFallback = true
     @AppStorage("mixtape.ios18.lastNativeFallback") private var lastNativeFallback = ""
     @AppStorage("mixtape.ios18.v35.nativeTrace") private var nativeTraceV35 = ""
+    @AppStorage(MixtapeAppearance.defaultsKey) private var appearance = MixtapeAppearance.system.rawValue
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker(selection: $appearance) {
+                        Text("System", tableName: "MixtapeTheme").tag(MixtapeAppearance.system.rawValue)
+                        Text("Light", tableName: "MixtapeTheme").tag(MixtapeAppearance.light.rawValue)
+                        Text("Dark", tableName: "MixtapeTheme").tag(MixtapeAppearance.dark.rawValue)
+                    } label: {
+                        Text("Appearance", tableName: "MixtapeTheme")
+                    }
+                } header: {
+                    Text("Appearance", tableName: "MixtapeTheme")
+                }
                 // MARK: - General Section
                 
                 Section {
@@ -187,6 +199,7 @@ struct SettingsView: View {
 #endif
             }
             .formStyle(.grouped)
+            .mixtapeScreenStyle()
 #if os(iOS)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

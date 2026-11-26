@@ -21,6 +21,8 @@ nonisolated struct MixtapeWidgetSnapshot: Codable, Equatable, Sendable {
     var recentSongs: [MixtapeWidgetSong]
     var playlists: [MixtapeWidgetPlaylist]
     var updatedAt: Date
+    var playback: MixtapeWidgetPlayback? = nil
+    var appearance: String? = nil
 
     static var empty: Self {
         Self(currentSong: nil, isPlaying: false, recentSongs: [], playlists: [], updatedAt: .distantPast)

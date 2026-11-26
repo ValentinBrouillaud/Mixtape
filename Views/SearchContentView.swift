@@ -16,7 +16,7 @@ struct SearchContentView: View {
     // MARK: - Layout Constants
 
     private enum Layout {
-        static let horizontalPadding: CGFloat = 24
+        static let horizontalPadding: CGFloat = 16
         static let thumbnailSize: CGFloat = 48
         static let cornerRadius: CGFloat = 6
         static let dividerLeading: CGFloat = 72
@@ -27,6 +27,7 @@ struct SearchContentView: View {
             self.contentView()
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
             switch self.viewModel.loadingState {
@@ -115,7 +116,7 @@ struct SearchContentView: View {
                 .font(.system(size: 14, weight: .medium))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(self.viewModel.selectedFilter == filter ? Color.accentColor : Color.secondary.opacity(0.2))
+                .background(self.viewModel.selectedFilter == filter ? MixtapePalette.accent : Color.secondary.opacity(0.2))
                 .foregroundStyle(self.viewModel.selectedFilter == filter ? .white : .primary)
                 .clipShape(.capsule)
         }

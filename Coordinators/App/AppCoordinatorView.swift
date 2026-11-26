@@ -37,6 +37,8 @@ struct AppCoordinatorView: View {
                 miniPlayerOverlay(videoId: videoId)
             }
         }
+        .background(MixtapePalette.background(colorScheme))
+        .tint(MixtapePalette.accent)
         .environment(\.openArtist, openArtist)
         .animation(.easeInOut(duration: 0.2), value: playerManager.showMiniPlayer)
         .overlay {
@@ -294,6 +296,15 @@ struct AppCoordinatorView: View {
     #endif
 
     #if os(iOS)
+    private var selectedMusicTab: MixtapeMainTab {
+        switch coordinator.navigationSelection {
+        case .search: .search
+        case .explore: .discovery
+        case .library, .libraryArtists, .libraryAlbums, .libraryPlaylist: .library
+        default: .home
+        }
+    }
+
     @ViewBuilder
     private func iOSMainContent() -> some View {
         TabView(selection: $coordinator.navigationSelection) {
@@ -318,7 +329,7 @@ struct AppCoordinatorView: View {
                 }
             }
             
-            Tab("Search", systemImage: "magnifyingglass", value: NavigationItem.search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: NavigationItem.search) {
                 LazyView {
                     SearchCoordinatorView(
                         coordinator: coordinator.searchCoordinator,
@@ -329,33 +340,34 @@ struct AppCoordinatorView: View {
             .accessibilityIdentifier(AccessibilityID.Sidebar.searchItem)
         }
         .environment(playerBarAppearance)
-        .environment(\.mixtapeMiniPlayerVisible, playerManager.currentTrack != nil)
-        .tabViewStyle(.sidebarAdaptable)
-        .mixtapeCompatTabViewBottomAccessory {
-            if playerManager.currentTrack != nil {
-                PlayerBar(
-                    viewModel: coordinator.playerViewModel,
-                    actualColorScheme: colorScheme,
-                    showFullscreenPlayer: $showFullscreenPlayer
-                )
-                .environment(playerBarAppearance)
-                .matchedTransitionSource(id: "player", in: playerNamespace)
-                .bottomAccessorySizeConstrained()
+        .environment(\.mixtapeMiniPlayerVisible, false)
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 6) {
+                if playerManager.currentTrack != nil {
+                    PlayerBar(viewModel: coordinator.playerViewModel, actualColorScheme: colorScheme,
+                        showFullscreenPlayer: $showFullscreenPlayer)
+                        .environment(playerBarAppearance)
+                        .matchedTransitionSource(id: "player", in: playerNamespace)
+                        .padding(.horizontal, 8)
+                }
+                MixtapeBottomNavigation(selected: selectedMusicTab) { tab in
+                    switch tab {
+                    case .home: coordinator.navigationSelection = .home
+                    case .discovery: coordinator.navigationSelection = .explore
+                    case .library: coordinator.navigationSelection = .library
+                    case .search: coordinator.navigationSelection = .search
+                    }
+                }
             }
+            .padding(.top, 6)
+            .background(MixtapePalette.background(colorScheme).ignoresSafeArea(edges: .bottom))
         }
-        .mixtapeCompatTabBarMinimizeOnScrollDown()
         .fullScreenCover(isPresented: $showFullscreenPlayer) {
-            ScrollView {
-
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                PlayerBarCover(
-                    viewModel: coordinator.playerViewModel,
-                    onDismiss: { showFullscreenPlayer = false }
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTransition(.zoom(sourceID: "player", in: playerNamespace))
+            PlayerBarCover(viewModel: coordinator.playerViewModel,
+                onDismiss: { showFullscreenPlayer = false })
+                .environment(\.colorScheme, colorScheme)
+                .navigationTransition(.zoom(sourceID: "player", in: playerNamespace))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
@@ -365,7 +377,7 @@ struct AppCoordinatorView: View {
                 } label: {
                     Image(systemName: "sparkles")
                         .font(.system(size: 14))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 .accessibilityIdentifier(AccessibilityID.MainWindow.aiButton)
                 .requiresIntelligence()

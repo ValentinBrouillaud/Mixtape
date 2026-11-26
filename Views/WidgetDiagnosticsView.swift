@@ -93,7 +93,8 @@ struct WidgetDiagnosticsView: View {
     private func refresh() {
         bridge.updateHistory(ListeningHistoryStore.shared.entries)
         bridge.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
-        bridge.updatePlayback(song: player.currentTrack, isPlaying: player.isPlaying)
+        bridge.updatePlayback(song: player.currentTrack, isPlaying: player.isPlaying,
+            position: player.progress, duration: player.duration)
         receipt = MixtapeWidgetStorage.lastReceipt()
     }
 

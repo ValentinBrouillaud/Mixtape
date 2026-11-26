@@ -39,10 +39,10 @@ struct MixtapeTimelineProvider: TimelineProvider {
 struct MixtapeResumeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "MixtapeResume", provider: MixtapeTimelineProvider()) { entry in
-            Group {
+            WidgetSurface(appearance: entry.snapshot.appearance) {
                 if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
                 else { ResumeWidgetView(snapshot: entry.snapshot) }
-            }.containerBackground(WidgetStyle.background, for: .widget)
+            }
         }
         .configurationDisplayName("Resume")
         .description("Open Mixtape and resume your music.")
@@ -53,10 +53,10 @@ struct MixtapeResumeWidget: Widget {
 struct MixtapeRecentsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "MixtapeRecents", provider: MixtapeTimelineProvider()) { entry in
-            Group {
+            WidgetSurface(appearance: entry.snapshot.appearance) {
                 if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
                 else { RecentsWidgetView(snapshot: entry.snapshot) }
-            }.containerBackground(WidgetStyle.background, for: .widget)
+            }
         }
         .configurationDisplayName("Recent Listening")
         .description("Your latest song and four recent favorites, ready to open in Mixtape.")
@@ -67,10 +67,10 @@ struct MixtapeRecentsWidget: Widget {
 struct MixtapeFavoritePlaylistWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "MixtapeFavoritePlaylist", intent: FavoritePlaylistIntent.self, provider: FavoritePlaylistProvider()) { entry in
-            Group {
+            WidgetSurface(appearance: entry.snapshot.appearance) {
                 if let issue = entry.storageIssue { WidgetStorageNoticeView(issue: issue) }
-                else { FavoritePlaylistWidgetView(playlist: entry.playlist) }
-            }.containerBackground(WidgetStyle.background, for: .widget)
+                else { FavoritePlaylistWidgetView(playlist: entry.playlist, snapshot: entry.snapshot) }
+            }
         }
         .configurationDisplayName("Favorite Playlist")
         .description("Choose a Mixtape playlist to open with one tap.")

@@ -31,6 +31,9 @@ struct MixtapeApp: App {
 
     /// Observe content language changes to update locale.
     @AppStorage(AppDefaults.Keys.contentLanguage) private var contentLanguage: String = ContentLanguage.systemDefault.rawValue
+    @AppStorage(MixtapeAppearance.defaultsKey) private var appearanceRaw = MixtapeAppearance.system.rawValue
+
+    private var appearance: MixtapeAppearance { MixtapeAppearance(rawValue: appearanceRaw) ?? .system }
 
     /// Current locale based on content language setting.
     private var appLocale: Locale {
@@ -43,12 +46,15 @@ struct MixtapeApp: App {
                 .environment(\.navigationSelection, $appCoordinator.navigationSelection)
                 .environment(\.showCommandBar, $showCommandBar)
                 .environment(\.locale, appLocale)
+                .preferredColorScheme(appearance.colorScheme)
+                .tint(MixtapePalette.accent)
                 .task {
                     refreshWidgetData()
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { refreshWidgetData() }
                 }
+                .onChange(of: appearanceRaw) { _, _ in refreshWidgetData() }
                 .onOpenURL { url in
                     Task { @MainActor in await openWidgetURL(url) }
                 }
@@ -187,9 +193,11 @@ struct MixtapeApp: App {
     }
 
     private func refreshWidgetData() {
+        WidgetSnapshotBridge.shared.updateAppearance(appearance)
         WidgetSnapshotBridge.shared.updateHistory(ListeningHistoryStore.shared.entries)
         WidgetSnapshotBridge.shared.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
-        WidgetSnapshotBridge.shared.updatePlayback(song: playerManager.currentTrack, isPlaying: playerManager.isPlaying)
+        WidgetSnapshotBridge.shared.updatePlayback(song: playerManager.currentTrack, isPlaying: playerManager.isPlaying,
+            position: playerManager.progress, duration: playerManager.duration)
     }
 
     private func openWidgetURL(_ url: URL) async {

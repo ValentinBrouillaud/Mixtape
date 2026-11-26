@@ -825,7 +825,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
 
     /// Updates playback state from the persistent WebView observer.
     func updatePlaybackState(isPlaying: Bool, progress: Double, duration: Double) {
-        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying)
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: self.isPlaying,
+            position: progress, duration: duration, isAdvancing: isPlaying)
         let previousProgress = self.progress
         self.progress = progress
         self.duration = duration
@@ -1063,7 +1064,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.logger.debug("Pausing playback")
         self.isPaused = true
         audioPlayer?.pause()
-        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: false)
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: false,
+            position: progress, duration: duration)
     }
 
     /// Resumes playback.
@@ -1085,6 +1087,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
             }
             audioPlayer?.play()
         }
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying,
+            position: progress, duration: duration)
     }
 
     /// Skips to next track.
@@ -1153,6 +1157,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.seekingProgress = time
         audioPlayer?.seek(to: time)
         self.progress = time
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying,
+            position: time, duration: duration, force: true)
     }
 
     /// Updates seeking progress while user is dragging the seek slider.

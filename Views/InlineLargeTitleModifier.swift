@@ -13,73 +13,37 @@ import SwiftUI
 struct InlineLargeTitleModifier<TrailingContent: View>: ViewModifier {
     let title: LocalizedStringKey
     let trailingContent: TrailingContent
-    @State private var initialOffset: CGFloat?
-    @State private var scrollOffset: CGFloat = 0
-
-    private var isHidden: Bool {
-        guard let initialOffset else { return false }
-        let offset = scrollOffset - initialOffset
-        return offset > 4.5
-    }
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            ios18Body(content: content)
-        } else {
-            fallbackBody(content: content)
+        content
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarTitleDisplayMode(.inline)
+            .toolbar { headerToolbar }
+            .toolbarBackground(MixtapePalette.background(scheme), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            trailingContent
+            Text(title).font(.system(size: 24, weight: .bold)).lineLimit(1)
         }
-    }
-
-    @available(iOS 18.0, *)
-    @ViewBuilder
-    private func ios18Body(content: Content) -> some View {
-        content
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y
-            } action: { _, newValue in
-                if initialOffset == nil, newValue != 0 {
-                    initialOffset = newValue
-                }
-                scrollOffset = newValue
-            }
-            .navigationTitle(isHidden ? "" : title)
-            .toolbar { toolbarContent(animated: true) }
-            .toolbarTitleDisplayMode(.large)
-            .animation(.easeInOut(duration: 0.2), value: isHidden)
-    }
-
-    @ViewBuilder
-    private func fallbackBody(content: Content) -> some View {
-        content
-            .navigationTitle(title)
-            .toolbar { toolbarContent(animated: false) }
-            .toolbarTitleDisplayMode(.large)
+        .foregroundStyle(.primary)
+        .padding(.vertical, 4)
     }
 
     @ToolbarContentBuilder
-    private func toolbarContent(animated: Bool) -> some ToolbarContent {
+    private var headerToolbar: some ToolbarContent {
         if #available(iOS 26.0, *) {
-            ToolbarItem(placement: .topBarTrailing) {
-                trailingView(animated: animated)
-            }
-            .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .topBarLeading) { header }
+                .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                trailingView(animated: animated)
-            }
+            ToolbarItem(placement: .topBarLeading) { header }
         }
     }
 
-    @ViewBuilder
-    private func trailingView(animated: Bool) -> some View {
-        if animated {
-            trailingContent
-                .opacity(isHidden ? 0 : 1)
-                .animation(.easeInOut(duration: 0.2), value: isHidden)
-        } else {
-            trailingContent
-        }
-    }
 }
 
 @available(iOS 17.0, *)

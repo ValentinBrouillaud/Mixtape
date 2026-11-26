@@ -1,18 +1,33 @@
+import AppIntents
 import Foundation
 import ImageIO
 import SwiftUI
 import WidgetKit
 
 enum WidgetStyle {
-    static let red = Color(red: 0.92, green: 0.14, blue: 0.23)
-    static let background = Color(red: 0.055, green: 0.06, blue: 0.07)
+    static let red = MixtapePalette.accent
+    static let background = MixtapePalette.background(.dark)
+}
+
+struct WidgetSurface<Content: View>: View {
+    @Environment(\.colorScheme) private var systemScheme
+    let appearance: String?
+    @ViewBuilder var content: () -> Content
+    private var scheme: ColorScheme {
+        (MixtapeAppearance(rawValue: appearance ?? "") ?? .system).colorScheme ?? systemScheme
+    }
+    var body: some View {
+        content()
+            .environment(\.colorScheme, scheme)
+            .tint(MixtapePalette.accent)
+            .containerBackground(MixtapePalette.background(scheme), for: .widget)
+    }
 }
 
 private struct WidgetArtwork: View {
     let fileName: String?
     let size: CGFloat
     var symbol = "music.note"
-
     var body: some View {
         Group {
             if let url = MixtapeWidgetStorage.artworkURL(fileName: fileName),
@@ -24,39 +39,28 @@ private struct WidgetArtwork: View {
                ] as CFDictionary) {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
-                Color.white.opacity(0.07)
-                    .overlay {
-                        Image(systemName: symbol)
-                            .font(.system(size: size * 0.34, weight: .light))
-                            .foregroundStyle(WidgetStyle.red)
-                    }
+                Color.primary.opacity(0.07).overlay {
+                    Image(systemName: symbol).font(.system(size: size * 0.34, weight: .light))
+                        .foregroundStyle(WidgetStyle.red)
+                }
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.14))
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.12))
         .accessibilityHidden(true)
     }
 }
 
 private struct WidgetTrackCaption: View {
     let song: MixtapeWidgetSong?
-
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             if let song {
-                Text(song.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(song.artist)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .lineLimit(1)
+                Text(song.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                Text(song.artist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             } else {
                 Text("Open Mixtape", tableName: "WidgetStatus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,15 +68,62 @@ private struct WidgetTrackCaption: View {
     }
 }
 
+private struct WidgetPlaybackButton: View {
+    let snapshot: MixtapeWidgetSnapshot
+    var playlistID: String? = nil
+    private var song: MixtapeWidgetSong? { snapshot.currentSong ?? snapshot.recentSongs.first }
+    var body: some View {
+        Button(intent: MixtapeWidgetPlaybackIntent(shouldPlay: !snapshot.isPlaying,
+            videoID: song?.videoId, playlistID: playlistID)) {
+            Image(systemName: snapshot.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(WidgetStyle.red, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(song == nil && playlistID == nil)
+        .accessibilityLabel(Text(snapshot.isPlaying ? "Pause" : "Play", tableName: "MixtapeTheme"))
+        .accessibilityHint(Text(song?.title ?? "Mixtape"))
+    }
+}
+
+private struct WidgetPlaybackProgress: View {
+    let snapshot: MixtapeWidgetSnapshot
+    var body: some View {
+        Group {
+            if let playback = snapshot.playback, let range = playback.timerInterval {
+                ProgressView(timerInterval: range, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+            } else {
+                ProgressView(value: snapshot.playback?.fraction(at: Date()) ?? 0)
+            }
+        }
+        .progressViewStyle(.linear)
+        .tint(WidgetStyle.red)
+        .frame(height: 3)
+        .accessibilityLabel(Text("Playback position", tableName: "MixtapeTheme"))
+    }
+}
+
 struct ResumeWidgetView: View {
     let snapshot: MixtapeWidgetSnapshot
     private var song: MixtapeWidgetSong? { snapshot.currentSong ?? snapshot.recentSongs.first }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            WidgetArtwork(fileName: song?.artworkFileName, size: 64)
-            Spacer(minLength: 8)
+            HStack {
+                WidgetArtwork(fileName: song?.artworkFileName, size: 48)
+                Spacer(minLength: 4)
+                if song != nil { WidgetPlaybackButton(snapshot: snapshot) }
+            }
+            Spacer(minLength: 6)
             WidgetTrackCaption(song: song)
+            WidgetPlaybackProgress(snapshot: snapshot).padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .widgetURL(MixtapeWidgetRoute.resume.url)
@@ -82,13 +133,14 @@ struct ResumeWidgetView: View {
 struct RecentsWidgetView: View {
     let snapshot: MixtapeWidgetSnapshot
     private var latest: MixtapeWidgetSong? { snapshot.currentSong ?? snapshot.recentSongs.first }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                WidgetArtwork(fileName: latest?.artworkFileName, size: 56)
+                WidgetArtwork(fileName: latest?.artworkFileName, size: 48)
                 WidgetTrackCaption(song: latest)
+                if latest != nil { WidgetPlaybackButton(snapshot: snapshot) }
             }
+            WidgetPlaybackProgress(snapshot: snapshot)
             if !snapshot.recentSongs.isEmpty {
                 HStack(spacing: 12) {
                     ForEach(Array(snapshot.recentSongs.prefix(4))) { song in
@@ -110,56 +162,60 @@ struct RecentsWidgetView: View {
 struct FavoritePlaylistWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let playlist: MixtapeWidgetPlaylist?
-
-    var body: some View {
-        FavoritePlaylistContent(playlist: playlist, family: family)
-    }
+    var snapshot: MixtapeWidgetSnapshot = .empty
+    var body: some View { FavoritePlaylistContent(playlist: playlist, family: family, snapshot: snapshot) }
 }
 
 struct FavoritePlaylistContent: View {
     let playlist: MixtapeWidgetPlaylist?
     let family: WidgetFamily
-
+    var snapshot: MixtapeWidgetSnapshot = .empty
     private var destination: URL {
         if let playlist, let id = UUID(uuidString: playlist.id) { return MixtapeWidgetRoute.playlist(id: id).url }
         return MixtapeWidgetRoute.library.url
     }
-
     private var title: some View {
-        Group {
-            if let playlist { Text(playlist.title) }
-            else { Text("Choose a playlist", tableName: "WidgetStatus") }
+        VStack(alignment: .leading, spacing: 3) {
+            Group {
+                if let playlist { Text(playlist.title) }
+                else { Text("Choose a playlist", tableName: "WidgetStatus") }
+            }
+            .font(.system(size: family == .systemSmall ? 14 : 19, weight: .semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(snapshot.currentSong == nil ? 2 : 1)
+            if let current = snapshot.currentSong {
+                Text(current.title).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
-        .font(.system(size: family == .systemSmall ? 15 : 20, weight: .semibold))
-        .foregroundStyle(.white)
-        .lineLimit(2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 0 : 12) {
             if family == .systemSmall {
-                VStack(alignment: .leading, spacing: 0) {
-                    WidgetArtwork(fileName: playlist?.artworkFileName, size: 64, symbol: "music.note.list")
-                    Spacer(minLength: 8)
-                    title
+                HStack {
+                    WidgetArtwork(fileName: playlist?.artworkFileName, size: 48, symbol: "music.note.list")
+                    Spacer(minLength: 4)
+                    WidgetPlaybackButton(snapshot: snapshot, playlistID: playlist?.id)
                 }
+                Spacer(minLength: 6)
+                title
+                WidgetPlaybackProgress(snapshot: snapshot).padding(.top, 8)
             } else {
-                HStack(spacing: 16) {
-                    WidgetArtwork(fileName: playlist?.artworkFileName, size: 80, symbol: "music.note.list")
+                HStack(spacing: 14) {
+                    WidgetArtwork(fileName: playlist?.artworkFileName, size: 64, symbol: "music.note.list")
                     title
+                    WidgetPlaybackButton(snapshot: snapshot, playlistID: playlist?.id)
                 }
+                WidgetPlaybackProgress(snapshot: snapshot)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetURL(destination)
-        .accessibilityElement(children: .combine)
     }
 }
 
 struct WidgetStorageNoticeView: View {
     let issue: MixtapeWidgetReadIssue
-
     private var title: String {
         switch issue {
         case .sharedContainerUnavailable: String(localized: "Data sharing unavailable", table: "WidgetStatus")
@@ -167,15 +223,13 @@ struct WidgetStorageNoticeView: View {
         case .unreadableSnapshot: String(localized: "Refresh widget data", table: "WidgetStatus")
         }
     }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: issue == .sharedContainerUnavailable ? "exclamationmark.triangle" : "arrow.clockwise")
                 .font(.system(size: 22, weight: .light)).foregroundStyle(WidgetStyle.red)
-            Text(title)
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary).lineLimit(2)
             Text("Check Widgets in Mixtape settings.", tableName: "WidgetStatus")
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.65)).lineLimit(3)
+                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(3)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetURL(MixtapeWidgetRoute.library.url)

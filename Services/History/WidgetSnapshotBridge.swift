@@ -21,7 +21,8 @@ final class WidgetSnapshotBridge {
     private var playlistArtworkCandidates: [String: [String]] = [:]
     private let writeQueue = DispatchQueue(label: "com.alexcding.mixtape.widget-snapshot")
 
-    func updatePlayback(song: Song?, isPlaying: Bool) {
+    func updatePlayback(song: Song?, isPlaying: Bool, position: TimeInterval? = nil,
+                        duration: TimeInterval? = nil, isAdvancing: Bool? = nil, force: Bool = false) {
         let current = song.map {
             MixtapeWidgetSong(
                 videoId: $0.videoId, title: $0.title, artist: $0.artistsDisplay,
@@ -29,9 +30,26 @@ final class WidgetSnapshotBridge {
             )
         }
         let retainedCurrent = current ?? snapshot.currentSong
-        guard retainedCurrent != snapshot.currentSong || snapshot.isPlaying != isPlaying else { return }
+        let now = Date()
+        let playback = retainedCurrent.map { current in
+            let sameTrack = snapshot.playback?.videoID == current.videoId
+            let fallbackPosition = sameTrack ? snapshot.playback?.position(at: now) ?? 0 : 0
+            let knownDuration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+                ?? song?.duration ?? (sameTrack ? snapshot.playback?.duration : nil)
+            return MixtapeWidgetPlayback(videoID: current.videoId, position: position ?? fallbackPosition,
+                duration: knownDuration, sampledAt: now, isAdvancing: isAdvancing ?? isPlaying)
+        }
+        let changedPosition = playback.map { $0.needsPublication(after: snapshot.playback) } ?? false
+        guard force || retainedCurrent != snapshot.currentSong || snapshot.isPlaying != isPlaying || changedPosition else { return }
         snapshot.currentSong = retainedCurrent
         snapshot.isPlaying = isPlaying
+        snapshot.playback = playback
+        publish()
+    }
+
+    func updateAppearance(_ appearance: MixtapeAppearance) {
+        guard snapshot.appearance != appearance.rawValue else { return }
+        snapshot.appearance = appearance.rawValue
         publish()
     }
 
@@ -54,6 +72,13 @@ final class WidgetSnapshotBridge {
 
     /// Explicitly retry publication when returning to the app or diagnosing widgets.
     func refresh() { publish() }
+
+    /// Make the latest snapshot visible before an audio App Intent completes.
+    func flush() async {
+        await withCheckedContinuation { continuation in
+            writeQueue.async { continuation.resume() }
+        }
+    }
 
     private func publish() {
         publicationGeneration &+= 1

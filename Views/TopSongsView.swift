@@ -52,6 +52,7 @@ struct TopSongsView: View {
             .padding(.horizontal, 16)
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
     }
 
     // MARK: - Song Row

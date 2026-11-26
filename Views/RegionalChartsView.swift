@@ -77,6 +77,7 @@ struct RegionalChartsView: View {
             }.padding()
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .navigationTitle(label("Top 50 by country"))
         .task(id: "\(country):\(period.rawValue)") { await loadDirectory() }
         .task(id: playlistID) { await loadSongs() }

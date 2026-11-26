@@ -80,6 +80,7 @@ struct DownloadsView: View {
         }
         .listStyle(.plain)
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
     }
 
     // MARK: - Active Downloads
@@ -168,7 +169,7 @@ struct DownloadsView: View {
                         .stroke(Color.secondary.opacity(0.3), lineWidth: 2.5)
                     Circle()
                         .trim(from: 0, to: task.progress)
-                        .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .stroke(MixtapePalette.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Image(systemName: "stop.fill")
                         .font(.system(size: 8))
@@ -250,7 +251,7 @@ struct DownloadsView: View {
                         } else {
                             Text("\(progress.downloaded)/\(progress.total) songs")
                                 .font(.caption)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(MixtapePalette.accent)
                         }
                     }
                 }

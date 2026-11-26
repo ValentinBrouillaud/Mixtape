@@ -37,7 +37,7 @@ struct SongCard: View {
                 .foregroundStyle(.white)
                 .shadow(radius: 6)
         }
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: 5))
     }
 
     private var placeholderView: some View {
@@ -50,7 +50,7 @@ struct SongCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Button(action: onPlay) {
                 Text(song.title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

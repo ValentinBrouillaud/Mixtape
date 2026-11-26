@@ -5,6 +5,7 @@ import SwiftUI
 /// Detail view for a playlist showing its tracks.
 struct PlaylistDetailView: View {
     @Bindable var viewModel: PlaylistDetailViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Selected tracks for context menu.
     @State private var selection = Set<Song>()
@@ -92,6 +93,7 @@ struct PlaylistDetailView: View {
         }
         .listStyle(.plain)
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .contextMenu(forSelectionType: Song.self, menu: { selectedTracks in
             if let track = selectedTracks.first {
                 Button {
@@ -160,22 +162,21 @@ struct PlaylistDetailView: View {
         .scrollContentBackground(.hidden)
         .background {
             LinearGradient(
-                colors: [viewModel.colorPalette.primary, viewModel.colorPalette.secondary],
+                colors: [viewModel.colorPalette.primary.opacity(0.22), MixtapePalette.background(colorScheme)],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .ignoresSafeArea()
         }
-        .environment(\.colorScheme, viewModel.colorPalette.preferredColorScheme)
         .onAppear {
             viewModel.extractArtworkPalette()
             #if os(iOS)
-            playerBarAppearance.colorSchemeOverride = viewModel.colorPalette.preferredColorScheme
+            playerBarAppearance.colorSchemeOverride = nil
             #endif
         }
         .onChange(of: viewModel.colorPalette) { _, newPalette in
             #if os(iOS)
-            playerBarAppearance.colorSchemeOverride = newPalette.preferredColorScheme
+            playerBarAppearance.colorSchemeOverride = nil
             #endif
         }
         .onDisappear {
@@ -367,10 +368,10 @@ struct PlaylistDetailView: View {
                 } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.body.weight(.bold))
-                        .foregroundStyle(viewModel.colorPalette.isLight ? .white : .black)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 40)
                         .padding(.vertical, 14)
-                        .background(.primary, in: Capsule())
+                        .background(MixtapePalette.accent, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .disabled(detail.tracks.isEmpty)

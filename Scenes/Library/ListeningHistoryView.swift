@@ -49,6 +49,7 @@ struct ListeningHistoryView: View {
                 .mixtapeScrollAbovePlayer()
             }
         }
+        .mixtapeScreenStyle()
         .navigationTitle(Text("Listening History", tableName: "ListeningHistory"))
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

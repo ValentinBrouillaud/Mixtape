@@ -167,6 +167,7 @@ struct ArtistDetailView: View {
                     }
                 }
                 .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
                 .onScrollGeometryChange(for: CGFloat.self) { geo in
                     geo.contentOffset.y + geo.contentInsets.top
                 } action: { _, newValue in
