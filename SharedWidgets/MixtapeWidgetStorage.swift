@@ -24,19 +24,12 @@ nonisolated enum MixtapeWidgetStorage {
     static let snapshotFileName = "widget-snapshot.json"
     static let receiptFileName = "widget-read-receipt.json"
     private static let maximumSnapshotBytes = 2 * 1024 * 1024
+    static let environment = MixtapeWidgetEnvironment.inspect(bundleURL: Bundle.main.bundleURL)
 
     // Entitlements cannot change during a process lifetime. Resolve once rather
     // than parsing a profile on every artwork lookup or playback update.
     private static let resolvedContainer: (identifier: String, url: URL)? = {
-        let explicit = Bundle.main.object(forInfoDictionaryKey: "MixtapeAppGroupIdentifier") as? String
-        let groups: [String]
-        if let profile = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-           let data = try? readSmallFile(at: profile, maximumBytes: MixtapeWidgetGroupResolver.maximumProfileBytes) {
-            groups = MixtapeWidgetGroupResolver.provisionedGroups(from: data)
-        } else {
-            groups = []
-        }
-        for identifier in MixtapeWidgetGroupResolver.candidates(explicitIdentifier: explicit, provisionedGroups: groups) {
+        for identifier in environment.candidates {
             // Profile content supplies name hints only. The OS sandbox remains
             // responsible for allowing access to the actual shared container.
             if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier) {

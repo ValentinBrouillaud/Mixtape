@@ -1,7 +1,7 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40.3 (build 43)**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.4 (build 44)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
@@ -25,10 +25,15 @@ common authorized group for both bundles. Build 41 embeds that request in
 temporary ad-hoc signatures before packaging so a re-signing tool can read it;
 the original fully unsigned build 40 did not contain those entitlement requests.
 Ad-hoc preparation does not itself authorize installation or create a profile.
-The app and extension also discover concrete renamed group hints in their
-embedded profiles, accepting them only when the OS allows the shared container.
-Unknown profile formats fall back to explicit configuration and the original ID.
-Settings > Widgets reports app publication separately from an extension receipt.
+Build 44 inspects both installed profiles to select a common Mixtape group,
+including team-suffixed names used during re-signing. An unrelated group (such
+as SideStore) is never selected simply because it is the only available group.
+Profiles supply name hints only; access still requires OS authorization. Unknown
+profile formats retain a fallback to explicit configuration and the original ID.
+Settings > Widgets distinguishes app access, app publication and confirmed widget
+reception, and its diagnostic lists both profiles and any missing common group.
+If the signing tool does not grant a common Mixtape group to both bundles, no
+in-app setting can enable sharing; both must be re-signed with that group.
 Unavailable sharing and corrupt/missing snapshots now have distinct widget states.
 The extension does not stream or download audio. Open Mixtape once after install
 so it can populate the widget snapshot. Widget publication and tap routing need

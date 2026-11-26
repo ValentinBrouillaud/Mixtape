@@ -19,10 +19,64 @@ final class WidgetGroupResolverTests: XCTestCase {
         XCTAssertEqual(groups, ["group.personal.Mixtape.ABC123", MixtapeWidgetStorage.appGroup])
     }
 
-    func testSingleCompletelyRenamedConcreteGroupCanBeTried() {
+    func testSingleUnrelatedGroupIsNeverUsedAsMixtapeStorage() {
         XCTAssertEqual(MixtapeWidgetGroupResolver.candidates(
             explicitIdentifier: nil, provisionedGroups: ["group.resigned.shared"]
+        ), [MixtapeWidgetStorage.appGroup])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.candidates(
+            explicitIdentifier: nil, provisionedGroups: ["group.com.SideStore.SideStore.A1B2C3D4E5"]
+        ), [MixtapeWidgetStorage.appGroup])
+    }
+
+    func testCustomGroupRequiresExplicitBuildConfiguration() {
+        XCTAssertEqual(MixtapeWidgetGroupResolver.candidates(
+            explicitIdentifier: "group.resigned.shared", provisionedGroups: ["group.resigned.shared"]
         ), ["group.resigned.shared", MixtapeWidgetStorage.appGroup])
+    }
+
+    func testSideStoreOnlyProfileCannotClaimSharingEvenWhenTheGroupIsAccessibleToTheApp() {
+        let app = profile(["group.com.SideStore.SideStore.A1B2C3D4E5"])
+        let widget = profile([])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: app, widget: widget), [])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: app, widget: app), [])
+    }
+
+    func testSelectsCommonMixtapeGroupAcrossDifferentProfileOrderingAndExtraGroups() {
+        let common = MixtapeWidgetStorage.appGroup + ".A1B2C3D4E5"
+        let app = profile([MixtapeWidgetStorage.appGroup, "group.com.SideStore.SideStore.A1B2C3D4E5", common])
+        let widget = profile([common, "group.other.widget"])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: app, widget: widget), [common])
+    }
+
+    func testGroupsWithDifferentTeamSuffixesCannotShareData() {
+        let app = profile([MixtapeWidgetStorage.appGroup + ".A1B2C3D4E5"])
+        let widget = profile([MixtapeWidgetStorage.appGroup + ".Z9Y8X7W6V5"])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: app, widget: widget), [])
+    }
+
+    func testTeamSuffixHintsWorkWithWildcardProfilesWithoutSelectingOtherApps() {
+        let wildcard = profile(["group.*"], team: "A1B2C3D4E5")
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: wildcard, widget: wildcard), [
+            MixtapeWidgetStorage.appGroup + ".A1B2C3D4E5", MixtapeWidgetStorage.appGroup,
+        ])
+        XCTAssertFalse(wildcard.permits("groupnot.allowed"))
+    }
+
+    func testAbsentProfileUsesHintsButReadableProfileWithoutGroupsRejectsSharing() {
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: nil, widget: nil), [MixtapeWidgetStorage.appGroup])
+        XCTAssertEqual(MixtapeWidgetGroupResolver.sharedCandidates(explicitIdentifier: nil, app: profile([]), widget: nil), [])
+    }
+
+    func testProfilesKeepTeamIdentityAndDistinguishMissingCapabilityFromUnknownFormat() throws {
+        let data = try PropertyListSerialization.data(fromPropertyList: [
+            "TeamIdentifier": ["A1B2C3D4E5"],
+            "Entitlements": ["application-identifier": "A1B2C3D4E5.com.example.mixtape"],
+        ], format: .xml, options: 0)
+        let parsed = try XCTUnwrap(MixtapeWidgetGroupResolver.profile(from: data))
+        XCTAssertEqual(parsed.applicationIdentifier, "A1B2C3D4E5.com.example.mixtape")
+        XCTAssertEqual(parsed.teamIdentifier, "A1B2C3D4E5")
+        XCTAssertEqual(parsed.groups, [])
+        XCTAssertNil(MixtapeWidgetGroupResolver.profile(from: Data("unknown".utf8)))
     }
 
     func testMultipleUnrelatedGroupsAreNotSelectedArbitrarily() {
@@ -71,5 +125,9 @@ final class WidgetGroupResolverTests: XCTestCase {
             "Name": "Test profile name",
             "Entitlements": ["com.apple.security.application-groups": groups],
         ], format: .xml, options: 0)
+    }
+
+    private func profile(_ groups: [String], team: String? = nil) -> MixtapeWidgetGroupResolver.Profile {
+        .init(applicationIdentifier: nil, teamIdentifier: team, groups: groups)
     }
 }

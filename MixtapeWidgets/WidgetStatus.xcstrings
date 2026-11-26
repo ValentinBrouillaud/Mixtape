@@ -506,6 +506,138 @@
           }
         }
       }
+    },
+    "App access": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App access"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accès de l’application"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accès de l’application"
+          }
+        }
+      }
+    },
+    "Shared Mixtape group": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared Mixtape group"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Groupe partagé Mixtape"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Groupe partagé Mixtape"
+          }
+        }
+      }
+    },
+    "Awaiting widget confirmation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Awaiting widget confirmation"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmation du widget attendue"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmation du widget attendue"
+          }
+        }
+      }
+    },
+    "Confirmed by widget": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmed by widget"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmé par le widget"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmé par le widget"
+          }
+        }
+      }
+    },
+    "The widget extension is missing. Keep MixtapeWidgets enabled when signing the app.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The widget extension is missing. Keep MixtapeWidgets enabled when signing the app."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’extension des widgets est absente. Conserve MixtapeWidgets lors de la signature de l’application."
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’extension des widgets est absente. Conserve MixtapeWidgets lors de la signature de l’application."
+          }
+        }
+      }
+    },
+    "The installed signing does not provide a common Mixtape group for the app and its widget. Both bundles must be signed with the same Mixtape App Group. Refreshing cannot grant this access.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The installed signing does not provide a common Mixtape group for the app and its widget. Both bundles must be signed with the same Mixtape App Group. Refreshing cannot grant this access."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La signature installée ne fournit pas de groupe Mixtape commun à l’application et au widget. Les deux doivent être signés avec le même groupe partagé Mixtape. Actualiser ne peut pas accorder cet accès."
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La signature installée ne fournit pas de groupe Mixtape commun à l’application et au widget. Les deux doivent être signés avec le même groupe partagé Mixtape. Actualiser ne peut pas accorder cet accès."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

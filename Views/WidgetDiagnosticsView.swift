@@ -16,7 +16,15 @@ struct WidgetDiagnosticsView: View {
         Form {
             Section {
                 LabeledContent(text("Data sharing")) {
+                    Text(MixtapeWidgetStorage.containerURL == nil ? text("Unavailable") :
+                         (receipt == nil ? text("Awaiting widget confirmation") : text("Confirmed by widget")))
+                }
+                LabeledContent(text("App access")) {
                     Text(MixtapeWidgetStorage.containerURL == nil ? text("Unavailable") : text("Available"))
+                }
+                LabeledContent(text("Shared Mixtape group")) {
+                    Text(MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? text("Unavailable"))
+                        .font(.caption).multilineTextAlignment(.trailing)
                 }
                 LabeledContent(text("Last publication")) {
                     if let date = bridge.lastPublishedAt {
@@ -32,7 +40,14 @@ struct WidgetDiagnosticsView: View {
                     else { Text(text("Not yet confirmed")) }
                 }
             } footer: {
-                if bridge.publicationIssue == .sharedContainerUnavailable {
+                if let issue = MixtapeWidgetStorage.environment.issue {
+                    switch issue {
+                    case .missingExtension:
+                        Text("The widget extension is missing. Keep MixtapeWidgets enabled when signing the app.", tableName: "WidgetStatus")
+                    case .conflictingIdentifiers, .noCommonMixtapeGroup:
+                        Text("The installed signing does not provide a common Mixtape group for the app and its widget. Both bundles must be signed with the same Mixtape App Group. Refreshing cannot grant this access.", tableName: "WidgetStatus")
+                    }
+                } else if bridge.publicationIssue == .sharedContainerUnavailable {
                     Text("Mixtape cannot share widget data. Signing must allow the same shared group for the app and its extension.", tableName: "WidgetStatus")
                 } else if bridge.publicationIssue != nil {
                     Text("Widget data could not be saved. Try refreshing the widgets.", tableName: "WidgetStatus")
@@ -73,10 +88,20 @@ struct WidgetDiagnosticsView: View {
     private var diagnosticText: String {
         let date: (Date?) -> String = { $0.map { ISO8601DateFormatter().string(from: $0) } ?? "none" }
         let info = Bundle.main.infoDictionary ?? [:]
+        let environment = MixtapeWidgetStorage.environment
+        let groups: (MixtapeWidgetGroupResolver.Profile?) -> String = { profile in
+            guard let profile else { return "unknown profile format or missing profile" }
+            return profile.groups.isEmpty ? "none" : profile.groups.joined(separator: ", ")
+        }
         return [
             "Mixtape widget diagnostic",
             "version: \(info["CFBundleShortVersionString"] ?? "unknown") (\(info["CFBundleVersion"] ?? "unknown"))",
             "app: \(Bundle.main.bundleIdentifier ?? "unknown")",
+            "widget: \(environment.widgetIdentifier ?? "missing")",
+            "appProfileGroups: \(groups(environment.appProfile))",
+            "widgetProfileGroups: \(groups(environment.widgetProfile))",
+            "candidateGroups: \(environment.candidates.joined(separator: ", "))",
+            "configurationIssue: \(environment.issue?.rawValue ?? "none")",
             "sharedGroup: \(MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? "unavailable")",
             "publicationIssue: \(bridge.publicationIssue.map { String(describing: $0) } ?? "none")",
             "lastPublication: \(date(bridge.lastPublishedAt))",
