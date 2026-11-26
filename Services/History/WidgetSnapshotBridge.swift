@@ -14,6 +14,8 @@ final class WidgetSnapshotBridge {
     private(set) var publicationIssue: MixtapeWidgetReadIssue?
     private(set) var lastPublishedTitle: String?
     private(set) var lastPublishedPlaylistCount = 0
+    private(set) var lastPublishedSharedIdentifier: String?
+    private(set) var publicationDetails: String?
     private var snapshot = MixtapeWidgetStorage.load()
     private var publicationGeneration = 0
     private var playlistArtworkCandidates: [String: [String]] = [:]
@@ -56,8 +58,10 @@ final class WidgetSnapshotBridge {
     private func publish() {
         publicationGeneration &+= 1
         let generation = publicationGeneration
-        guard let root = MixtapeWidgetStorage.containerURL else {
+        let root = MixtapeWidgetStorage.containerURL
+        guard root != nil || !MixtapeWidgetKeychain.candidates(in: MixtapeWidgetStorage.environment).isEmpty else {
             publicationIssue = .sharedContainerUnavailable
+            publicationDetails = "No accessible App Group or keychain identity"
             DiagnosticsLogger.ui.error("Widget publication unavailable: no accessible shared container")
             return
         }
@@ -87,19 +91,25 @@ final class WidgetSnapshotBridge {
         let sourceFiles = sources
         writeQueue.async {
             do {
-                let artworkDirectory = root.appendingPathComponent("Artwork", isDirectory: true)
-                try FileManager.default.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
-                for (fileName, source) in sourceFiles {
-                    let target = artworkDirectory.appendingPathComponent(fileName)
-                    if !FileManager.default.fileExists(atPath: target.path) {
-                        try? FileManager.default.copyItem(at: source, to: target)
+                let sharedIdentifier: String
+                if let root {
+                    let artworkDirectory = root.appendingPathComponent("Artwork", isDirectory: true)
+                    try FileManager.default.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
+                    for (fileName, source) in sourceFiles {
+                        let target = artworkDirectory.appendingPathComponent(fileName)
+                        if !FileManager.default.fileExists(atPath: target.path) {
+                            try? FileManager.default.copyItem(at: source, to: target)
+                        }
                     }
-                }
-                let data = try JSONEncoder().encode(pending)
-                try data.write(to: root.appendingPathComponent(MixtapeWidgetStorage.snapshotFileName), options: .atomic)
-                let retained = Set(sourceFiles.keys)
-                for existing in (try? FileManager.default.contentsOfDirectory(at: artworkDirectory, includingPropertiesForKeys: nil)) ?? [] {
-                    if !retained.contains(existing.lastPathComponent) { try? FileManager.default.removeItem(at: existing) }
+                    let data = try JSONEncoder().encode(pending)
+                    try data.write(to: root.appendingPathComponent(MixtapeWidgetStorage.snapshotFileName), options: .atomic)
+                    let retained = Set(sourceFiles.keys)
+                    for existing in (try? FileManager.default.contentsOfDirectory(at: artworkDirectory, includingPropertiesForKeys: nil)) ?? [] {
+                        if !retained.contains(existing.lastPathComponent) { try? FileManager.default.removeItem(at: existing) }
+                    }
+                    sharedIdentifier = MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? MixtapeWidgetStorage.appGroup
+                } else {
+                    sharedIdentifier = try MixtapeWidgetKeychain.publish(pending, sources: sourceFiles)
                 }
                 #if canImport(WidgetKit)
                 Task { @MainActor [weak self] in
@@ -108,14 +118,18 @@ final class WidgetSnapshotBridge {
                     self.lastPublishedAt = pending.updatedAt
                     self.lastPublishedTitle = pending.currentSong?.title ?? pending.recentSongs.first?.title
                     self.lastPublishedPlaylistCount = pending.playlists.count
+                    self.lastPublishedSharedIdentifier = sharedIdentifier
                     self.publicationIssue = nil
+                    self.publicationDetails = nil
                 }
                 #endif
             } catch {
+                let details = error.localizedDescription
                 DiagnosticsLogger.ui.error("Unable to publish widget metadata: \(error.localizedDescription)")
                 Task { @MainActor [weak self] in
                     guard let self, self.publicationGeneration == generation else { return }
                     self.publicationIssue = .unreadableSnapshot
+                    self.publicationDetails = details
                 }
             }
         }

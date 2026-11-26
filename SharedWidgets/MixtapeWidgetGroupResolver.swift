@@ -12,6 +12,8 @@ nonisolated enum MixtapeWidgetGroupResolver {
         let applicationIdentifier: String?
         let teamIdentifier: String?
         let groups: [String]
+        var keychainGroups: [String] = []
+        var appIdentifierPrefix: String? = nil
 
         func permits(_ identifier: String) -> Bool {
             groups.contains { group in
@@ -93,7 +95,9 @@ nonisolated enum MixtapeWidgetGroupResolver {
         return Profile(
             applicationIdentifier: entitlements["application-identifier"] as? String,
             teamIdentifier: team.flatMap { isValidTeamIdentifier($0) ? $0 : nil },
-            groups: groups.filter { isValidIdentifier($0) || $0 == "group.*" || ($0.hasSuffix(".*") && isValidIdentifier(String($0.dropLast(2)))) }
+            groups: groups.filter { isValidIdentifier($0) || $0 == "group.*" || ($0.hasSuffix(".*") && isValidIdentifier(String($0.dropLast(2)))) },
+            keychainGroups: entitlements["keychain-access-groups"] as? [String] ?? [],
+            appIdentifierPrefix: (root["ApplicationIdentifierPrefix"] as? [String])?.first.flatMap { isValidTeamIdentifier($0) ? $0 : nil }
         )
     }
 }

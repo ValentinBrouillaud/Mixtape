@@ -16,14 +16,17 @@ struct WidgetDiagnosticsView: View {
         Form {
             Section {
                 LabeledContent(text("Data sharing")) {
-                    Text(MixtapeWidgetStorage.containerURL == nil ? text("Unavailable") :
+                    Text(!appCanPublish ? text("Unavailable") :
                          (receipt == nil ? text("Awaiting widget confirmation") : text("Confirmed by widget")))
                 }
                 LabeledContent(text("App access")) {
-                    Text(MixtapeWidgetStorage.containerURL == nil ? text("Unavailable") : text("Available"))
+                    Text(appCanPublish ? text("Available") : text("Unavailable"))
                 }
-                LabeledContent(text("Shared Mixtape group")) {
-                    Text(MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? text("Unavailable"))
+                LabeledContent(text("Widget data transfer")) {
+                    Text(bridge.lastPublishedSharedIdentifier?.hasPrefix("keychain:") == true ? text("Shared keychain") : text("Shared Mixtape group"))
+                }
+                LabeledContent(text("Shared identifier")) {
+                    Text(bridge.lastPublishedSharedIdentifier ?? MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? text("Unavailable"))
                         .font(.caption).multilineTextAlignment(.trailing)
                 }
                 LabeledContent(text("Last publication")) {
@@ -40,7 +43,9 @@ struct WidgetDiagnosticsView: View {
                     else { Text(text("Not yet confirmed")) }
                 }
             } footer: {
-                if let issue = MixtapeWidgetStorage.environment.issue {
+                if appCanPublish && bridge.lastPublishedSharedIdentifier?.hasPrefix("keychain:") == true {
+                    Text("Widget metadata is saved in the keychain because the file sharing group is unavailable. Sharing is confirmed only after a widget reads it. No audio or login credentials are stored here.", tableName: "WidgetStatus")
+                } else if let issue = MixtapeWidgetStorage.environment.issue {
                     switch issue {
                     case .missingExtension:
                         Text("The widget extension is missing. Keep MixtapeWidgets enabled when signing the app.", tableName: "WidgetStatus")
@@ -71,7 +76,14 @@ struct WidgetDiagnosticsView: View {
             }
         }
         .navigationTitle(Text("Widgets", tableName: "WidgetStatus"))
-        .task { refresh() }
+        .task {
+            refresh()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                if scenePhase == .active { receipt = MixtapeWidgetStorage.lastReceipt() }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { receipt = MixtapeWidgetStorage.lastReceipt() }
         }
@@ -83,6 +95,10 @@ struct WidgetDiagnosticsView: View {
         bridge.updatePlaylists(MixtapeQuickPlaylists.shared.playlists)
         bridge.updatePlayback(song: player.currentTrack, isPlaying: player.isPlaying)
         receipt = MixtapeWidgetStorage.lastReceipt()
+    }
+
+    private var appCanPublish: Bool {
+        MixtapeWidgetStorage.containerURL != nil || (bridge.lastPublishedAt != nil && bridge.publicationIssue == nil)
     }
 
     private var diagnosticText: String {
@@ -102,8 +118,11 @@ struct WidgetDiagnosticsView: View {
             "widgetProfileGroups: \(groups(environment.widgetProfile))",
             "candidateGroups: \(environment.candidates.joined(separator: ", "))",
             "configurationIssue: \(environment.issue?.rawValue ?? "none")",
+            "keychainCandidates: \(MixtapeWidgetKeychain.candidates(in: environment).map(\.identifier).joined(separator: ", "))",
+            "publishedSharedIdentifier: \(bridge.lastPublishedSharedIdentifier ?? "none")",
             "sharedGroup: \(MixtapeWidgetStorage.resolvedAppGroupIdentifier ?? "unavailable")",
             "publicationIssue: \(bridge.publicationIssue.map { String(describing: $0) } ?? "none")",
+            "publicationDetails: \(bridge.publicationDetails ?? "none")",
             "lastPublication: \(date(bridge.lastPublishedAt))",
             "lastExtensionRead: \(date(receipt?.readAt))",
             "extensionSnapshot: \(date(receipt?.snapshotUpdatedAt))",

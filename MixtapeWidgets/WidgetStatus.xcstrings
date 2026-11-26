@@ -638,6 +638,94 @@
           }
         }
       }
+    },
+    "Widget data transfer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widget data transfer"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfert des données"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfert des données"
+          }
+        }
+      }
+    },
+    "Shared identifier": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared identifier"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiant partagé"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiant partagé"
+          }
+        }
+      }
+    },
+    "Shared keychain": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared keychain"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trousseau partagé"
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trousseau partagé"
+          }
+        }
+      }
+    },
+    "Widget metadata is saved in the keychain because the file sharing group is unavailable. Sharing is confirmed only after a widget reads it. No audio or login credentials are stored here.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widget metadata is saved in the keychain because the file sharing group is unavailable. Sharing is confirmed only after a widget reads it. No audio or login credentials are stored here."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les données des widgets sont enregistrées dans le trousseau car le groupe de partage de fichiers est indisponible. Le partage sera confirmé après lecture par un widget. Aucun fichier audio ni identifiant de connexion n’y est enregistré."
+          }
+        },
+        "fr-CA": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les données des widgets sont enregistrées dans le trousseau car le groupe de partage de fichiers est indisponible. Le partage sera confirmé après lecture par un widget. Aucun fichier audio ni identifiant de connexion n’y est enregistré."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

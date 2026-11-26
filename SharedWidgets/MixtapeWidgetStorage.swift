@@ -9,6 +9,7 @@ nonisolated enum MixtapeWidgetReadIssue: String, Equatable, Sendable {
 nonisolated struct MixtapeWidgetReadResult: Equatable, Sendable {
     let snapshot: MixtapeWidgetSnapshot
     let issue: MixtapeWidgetReadIssue?
+    var sharedIdentifier: String? = nil
 }
 
 /// Written explicitly by widget providers, never by the containing application.
@@ -44,7 +45,12 @@ nonisolated enum MixtapeWidgetStorage {
 
     static func load() -> MixtapeWidgetSnapshot { read().snapshot }
 
-    static func read() -> MixtapeWidgetReadResult { read(at: containerURL) }
+    static func read() -> MixtapeWidgetReadResult {
+        guard let root = containerURL else { return MixtapeWidgetKeychain.read() }
+        var result = read(at: root)
+        result.sharedIdentifier = resolvedAppGroupIdentifier
+        return result
+    }
 
     /// `root` is the MixtapeWidgets directory within an authorized App Group.
     /// An injectable directory keeps disk behavior testable without signing.
@@ -65,7 +71,10 @@ nonisolated enum MixtapeWidgetStorage {
     /// manufacture proof that a separate widget extension received its data.
     @discardableResult
     static func acknowledge(_ result: MixtapeWidgetReadResult, at date: Date = Date()) -> Bool {
-        acknowledge(result, in: containerURL, appGroupIdentifier: resolvedAppGroupIdentifier, at: date)
+        if result.sharedIdentifier?.hasPrefix("keychain:") == true {
+            return MixtapeWidgetKeychain.acknowledge(result, at: date)
+        }
+        return acknowledge(result, in: containerURL, appGroupIdentifier: resolvedAppGroupIdentifier, at: date)
     }
 
     @discardableResult
@@ -87,6 +96,7 @@ nonisolated enum MixtapeWidgetStorage {
     }
 
     static func lastReceipt() -> MixtapeWidgetReadReceipt? {
+        if containerURL == nil { return MixtapeWidgetKeychain.lastReceipt() }
         guard let receipt = lastReceipt(at: containerURL), receipt.appGroupIdentifier == resolvedAppGroupIdentifier else { return nil }
         return receipt
     }
@@ -101,8 +111,10 @@ nonisolated enum MixtapeWidgetStorage {
 
     static func artworkURL(fileName: String?) -> URL? {
         guard let fileName, !fileName.isEmpty, fileName == (fileName as NSString).lastPathComponent,
-              ![".", ".."].contains(fileName), let root = containerURL else { return nil }
-        return root.appendingPathComponent("Artwork", isDirectory: true).appendingPathComponent(fileName)
+              ![".", ".."].contains(fileName) else { return nil }
+        let root = containerURL.map { $0.appendingPathComponent("Artwork", isDirectory: true) }
+            ?? MixtapeWidgetKeychain.artworkDirectory
+        return root.appendingPathComponent(fileName)
     }
 
     private static func readSmallFile(at url: URL, maximumBytes: Int) throws -> Data {

@@ -1,7 +1,7 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40.4 (build 44)**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.5 (build 45)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
@@ -32,8 +32,14 @@ Profiles supply name hints only; access still requires OS authorization. Unknown
 profile formats retain a fallback to explicit configuration and the original ID.
 Settings > Widgets distinguishes app access, app publication and confirmed widget
 reception, and its diagnostic lists both profiles and any missing common group.
-If the signing tool does not grant a common Mixtape group to both bundles, no
-in-app setting can enable sharing; both must be re-signed with that group.
+Build 45 also offers a Keychain Services fallback when no file App Group is
+available, so re-signers such as Sideloadly can use an authorized common keychain
+identity instead. It exchanges only the metadata snapshot, bounded thumbnail
+JPEGs and a widget read receipt in a dedicated service namespace. Every operation
+is checked by the OS; profile hints do not grant access. Items remain on the
+device and are accessible after its first unlock. A successful host write still
+does not prove the extension received data: Settings waits for a widget receipt.
+This fallback needs physical validation after the final Sideloadly signature.
 Unavailable sharing and corrupt/missing snapshots now have distinct widget states.
 The extension does not stream or download audio. Open Mixtape once after install
 so it can populate the widget snapshot. Widget publication and tap routing need
