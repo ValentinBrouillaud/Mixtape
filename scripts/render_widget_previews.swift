@@ -180,14 +180,33 @@ enum WidgetPreviewRenderer {
     }
 
     private static func render<V: View>(_ view: V, to url: URL) throws {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let image = renderer.cgImage,
-              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+        // ImageRenderer substitutes warning tiles for native progress controls
+        // and omits ScrollView contents. Host the real AppKit-backed hierarchy
+        // before capturing so previews include those controls and lazy content.
+        let host = NSHostingView(rootView: view)
+        let size = host.fittingSize
+        guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else {
             throw CocoaError(.fileWriteUnknown)
         }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: size)
+        window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+        window.orderBack(nil)
+        defer { window.close() }
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        host.layoutSubtreeIfNeeded()
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try png.write(to: url, options: .atomic)
     }
 
     private static func cover(at url: URL, color: (CGFloat, CGFloat, CGFloat)) throws -> CGImage {
