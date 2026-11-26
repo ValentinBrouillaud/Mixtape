@@ -94,9 +94,6 @@ struct ListeningHistoryView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(entry.lastPlayedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
             }
             Button { play(entry) } label: { Image(systemName: "play.circle") }
                 .buttonStyle(.plain)

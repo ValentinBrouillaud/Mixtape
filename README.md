@@ -1,10 +1,16 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40.5 (build 45)**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.6 (build 46)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
+
+Build 46 simplifies the widgets to artwork, track/artist text and recent artwork
+shortcuts, removing repeated branding, captions, decorative buttons and playlist
+counts. The history list shows each track and artist without a relative-time
+counter. CI renders the actual small/medium SwiftUI layouts, including empty
+and error states. These Mac layout previews do not replace an iPhone check.
 
 Version 40 adds the approved Resume, Recents and Favorite Playlist home-screen
 widgets; local history of 100 distinct listened tracks; validated artist links;
