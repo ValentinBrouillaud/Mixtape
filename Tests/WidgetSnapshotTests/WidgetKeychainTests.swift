@@ -100,9 +100,17 @@ final class WidgetKeychainTests: XCTestCase {
         let app = MixtapeWidgetGroupResolver.Profile(applicationIdentifier: nil, teamIdentifier: "A1B2C3D4E5", groups: [])
         let widget = MixtapeWidgetGroupResolver.Profile(applicationIdentifier: nil, teamIdentifier: "Z9Y8X7W6V5", groups: [])
         XCTAssertEqual(MixtapeWidgetKeychain.candidates(in: environment(app: app, widget: widget)), [])
-        XCTAssertEqual(MixtapeWidgetKeychain.candidates(in: environment(app: nil, widget: nil)), [])
+        let unidentified = MixtapeWidgetEnvironment(appIdentifier: "com.alexcding.mixtape", widgetIdentifier: "com.alexcding.mixtape.widgets", appProfile: nil, widgetProfile: nil, candidates: [], issue: nil)
+        XCTAssertEqual(MixtapeWidgetKeychain.candidates(in: unidentified), [])
         let missing = MixtapeWidgetEnvironment(appIdentifier: "com.alexcding.mixtape", widgetIdentifier: nil, appProfile: app, widgetProfile: nil, candidates: [], issue: .missingExtension)
         XCTAssertEqual(MixtapeWidgetKeychain.candidates(in: missing), [])
+    }
+
+    func testResignedWidgetWithoutReadableProfilesCanStillTryItsOwnTeamNamespace() {
+        let widgetOnly = MixtapeWidgetEnvironment(appIdentifier: nil,
+            widgetIdentifier: "com.alexcding.mixtape.A1B2C3D4E5.widgets", appProfile: nil, widgetProfile: nil, candidates: [], issue: nil)
+        XCTAssertEqual(MixtapeWidgetKeychain.candidates(in: widgetOnly).first?.group,
+            "A1B2C3D4E5.com.alexcding.mixtape.widgets.shared")
     }
 
     func testKeychainHintsUseTheAppIdentifierPrefixWhenItDiffersFromTeamIdentity() throws {

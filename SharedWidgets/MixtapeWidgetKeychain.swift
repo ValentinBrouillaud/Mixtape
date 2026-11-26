@@ -32,7 +32,13 @@ nonisolated enum MixtapeWidgetKeychain {
               environment.issue != .conflictingIdentifiers else { return [] }
         let app = environment.appProfile
         let widget = environment.widgetProfile
-        let prefix = app?.appIdentifierPrefix ?? app?.teamIdentifier ?? widget?.appIdentifierPrefix ?? widget?.teamIdentifier
+        // Sideloadly may omit the extension's embedded profile. Its renamed
+        // bundle ID is another name hint when the parent profile is unreadable.
+        let bundleHint = [environment.appIdentifier, environment.widgetIdentifier].compactMap { $0 }
+            .filter { $0.hasPrefix("com.alexcding.mixtape.") }
+            .flatMap { $0.split(separator: ".").map(String.init) }
+            .first { $0.utf8.count == 10 && $0.utf8.allSatisfy({ (65...90).contains($0) || (48...57).contains($0) }) }
+        let prefix = app?.appIdentifierPrefix ?? app?.teamIdentifier ?? widget?.appIdentifierPrefix ?? widget?.teamIdentifier ?? bundleHint
         guard let prefix, prefix.utf8.count == 10,
               prefix.utf8.allSatisfy({ (65...90).contains($0) || (48...57).contains($0) }) else { return [] }
         if let other = widget?.appIdentifierPrefix ?? widget?.teamIdentifier, other != prefix { return [] }
