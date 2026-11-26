@@ -174,48 +174,53 @@ struct PlayerBarCover: View {
 
     // MARK: - Playback Controls
 
-    @ViewBuilder
     private func playbackControls() -> some View {
         HStack(spacing: 44) {
-            // Previous
-            Button {
-                viewModel.previous()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Previous")
-
-            // Play/Pause
-            Button {
-                viewModel.playPause()
-            } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 60, height: 60)
-                    .background(MixtapePalette.accent, in: Circle())
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .frame(width: 64)
-            .accessibilityLabel(Text(viewModel.isPlaying ? "Pause" : "Play", tableName: "MixtapeTheme"))
-
-            // Next
-            Button {
-                viewModel.next()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Next")
+            previousButton
+            playPauseButton
+            nextButton
         }
+    }
+
+    private var previousButton: some View {
+        Button { viewModel.previous() } label: {
+            Image(systemName: "backward.fill")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Previous")
+    }
+
+    private var playPauseLabel: Text {
+        if viewModel.isPlaying { Text("Pause", tableName: "MixtapeTheme") }
+        else { Text("Play", tableName: "MixtapeTheme") }
+    }
+
+    private var playPauseButton: some View {
+        Button { viewModel.playPause() } label: {
+            Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 60, height: 60)
+                .background(MixtapePalette.accent, in: Circle())
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 64)
+        .accessibilityLabel(playPauseLabel)
+    }
+
+    private var nextButton: some View {
+        Button { viewModel.next() } label: {
+            Image(systemName: "forward.fill")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Next")
     }
 
     // MARK: - Volume Section
