@@ -162,7 +162,7 @@ struct DownloadContextMenuItems: View {
             Button {
                 Task { await downloadManager.repairExistingDownloadIfNeeded(videoId: song.videoId, force: true) }
             } label: {
-                Label("Vérifier la durée du fichier", systemImage: "waveform.path")
+                Label("Corriger la durée du fichier", systemImage: "waveform.path")
             }
             Button(role: .destructive) {
                 downloadManager.deleteDownload(videoId: song.videoId)

@@ -5,7 +5,7 @@ import PackageDescription
 // signing, audio hardware or an external music-service account.
 let package = Package(
     name: "NativeAudioTransport",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     products: [.library(name: "NativeAudioTransport", targets: ["NativeAudioTransport"])],
     targets: [
         .target(
@@ -19,6 +19,7 @@ let package = Package(
                 "Services/Charts/RegionalChartDirectory.swift",
                 "Services/History/ListeningHistoryPolicy.swift",
                 "Services/History/HistoryThumbnail.swift",
+                "Services/Download/DownloadedAudioProcessor.swift",
                 "Models/PlaybackQueue.swift",
             ]
         ),
@@ -28,7 +29,7 @@ let package = Package(
             path: "Tests/NativeAudioTransportTests",
             exclude: ["Fixtures"]
         ),
-        .target(name: "ArtistNavigation", path: "Models/YTMusic", sources: ["Artist.swift"]),
+        .target(name: "ArtistNavigation", path: "Models/YTMusic", sources: ["Artist.swift", "Song.swift", "Album.swift", "LikeStatus.swift"]),
         .testTarget(name: "ArtistNavigationTests", dependencies: ["ArtistNavigation"], path: "Tests/ArtistNavigationTests"),
         .target(name: "SharedWidgetModel", path: "SharedWidgets"),
         .testTarget(name: "WidgetSnapshotTests", dependencies: ["SharedWidgetModel"], path: "Tests/WidgetSnapshotTests"),

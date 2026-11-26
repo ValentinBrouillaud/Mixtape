@@ -415,11 +415,11 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
                     ) { [weak self] fraction in
                         guard let self, self.isCurrentAttempt(videoId: videoId, token: token),
                               let i = self.activeTasks.firstIndex(where: { $0.id == videoId }) else { return }
-                        self.activeTasks[i].progress = min(max(fraction, 0), 1)
+                        self.activeTasks[i].progress = min(max(fraction, 0), 1) * 0.95
                     }
                     await finishDownloadedAudio(
                         videoId: videoId, token: token, fileURL: temporary,
-                        mimeType: stream.format.mimeType
+                        mimeType: stream.format.mimeType, bitRate: stream.format.bitrate
                     )
                     return
                 } catch {
@@ -551,144 +551,46 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
         }
     }
 
-    // MARK: - Repair audio tails (iOS 18)
-
-    /// Find the last audible decoded PCM frame, even if container timestamps
-    /// or AAC padding make AVPlayer report a much longer duration. This function
-    /// runs off the main actor, never during app initialization.
-    nonisolated private static func audibleEndOfM4A(_ url: URL) -> (decoded: Double, audible: Double)? {
-        do {
-            let file = try AVAudioFile(forReading: url)
-            let rate = file.processingFormat.sampleRate
-            let frames = file.length
-            guard rate > 0, frames > 0,
-                  Double(frames) / rate < 10_800,
-                  file.processingFormat.commonFormat == .pcmFormatFloat32,
-                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 8192)
-            else { return nil }
-
-            var cursor = frames
-            let channels = Int(file.processingFormat.channelCount)
-            guard channels > 0 else { return nil }
-            // Work backwards in small PCM blocks; stop at the last frame whose
-            // peak exceeds -56 dBFS. Only long tails are candidates for repair.
-            while cursor > 0 {
-                guard !Task.isCancelled else { return nil }
-                let start = max(0, cursor - AVAudioFramePosition(8192))
-                file.framePosition = start
-                try file.read(into: buffer, frameCount: AVAudioFrameCount(cursor - start))
-                guard let data = buffer.floatChannelData else { return nil }
-                if buffer.frameLength > 0 {
-                    for i in stride(from: Int(buffer.frameLength) - 1, through: 0, by: -1) {
-                        var audible = false
-                        for channel in 0..<channels {
-                            if abs(data[channel][i]) > 0.0016 {
-                                audible = true
-                                break
-                            }
-                        }
-                        if audible {
-                            return (Double(frames) / rate, Double(start + AVAudioFramePosition(i) + 1) / rate)
-                        }
-                    }
-                }
-                cursor = start
-            }
-        } catch { return nil }
-        return nil  // No audible samples; never replace with an empty file.
-    }
-
-    /// Only repairs long, high-confidence silent tails. Never removes short
-    /// fades or ordinary intentional quiet transitions.
-    private func repairM4ATailIfNeeded(at url: URL, expectedDuration: TimeInterval?) async {
-        guard url.pathExtension.lowercased() == "m4a" else { return }
-        let readingTask = Task.detached(priority: .utility) {
-            Self.audibleEndOfM4A(url)
-        }
-        let reading = await withTaskCancellationHandler {
-            await readingTask.value
-        } onCancel: {
-            readingTask.cancel()
-        }
-        guard !Task.isCancelled, let reading else {
-            logger.warning("Cannot scan downloaded AAC: \(url.lastPathComponent)")
-            return
-        }
-
-        let asset = AVURLAsset(url: url)
-        guard let reported = try? await asset.load(.duration).seconds, !Task.isCancelled,
-              reported.isFinite, reported > 5 else { return }
-        let trailing = reading.decoded - reading.audible
-        let hasLongSilence = trailing >= 45 && trailing / reading.decoded > 0.18
-        let veryLongSilentTail = trailing >= 90 && trailing / reading.decoded > 0.30
-        let hasPhantomDuration = reported > reading.decoded + 45 &&
-            abs(reading.audible - reading.decoded) < 12
-        // Metadata can ALSO be wrong (even double the actual track duration).
-        // A very long decoded silent tail is sufficient evidence by itself.
-        let agreesWithReference = expectedDuration == nil ||
-            abs((expectedDuration ?? reading.audible) - reading.audible) < 25
-        guard veryLongSilentTail || (hasLongSilence && agreesWithReference) || hasPhantomDuration else {
-            logger.info("Audio tail check: media=\(reported)s, decoded=\(reading.decoded)s, audible=\(reading.audible)s; preserved")
-            return
-        }
-
-        let cutAt = min(reading.audible + 0.8, reading.decoded)
-        guard cutAt >= 10, reported > cutAt + 30 else { return }
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A),
-              exporter.supportedFileTypes.contains(.m4a) else {
-            logger.warning("AAC tail repair export unavailable")
-            return
-        }
-        let tempURL = url.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString)-repaired.m4a")
-        try? FileManager.default.removeItem(at: tempURL)
-        exporter.timeRange = CMTimeRange(
-            start: .zero,
-            duration: CMTime(seconds: cutAt, preferredTimescale: 600)
-        )
-        do {
-            try await exporter.export(to: tempURL, as: .m4a)
-            try Task.checkCancellation()
-            let trimmedAsset = AVURLAsset(url: tempURL)
-            let trimmed = try await trimmedAsset.load(.duration).seconds
-            try Task.checkCancellation()
-            guard trimmed.isFinite, abs(trimmed - cutAt) < 8,
-                  let size = try? tempURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                  size > 4096 else {
-                throw NSError(domain: "MixtapeAudioTail", code: 1)
-            }
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
-            logger.info("Audio tail repaired: \(reported)s -> \(trimmed)s (\(url.lastPathComponent))")
-        } catch {
-            logger.warning("Tail repair skipped; original preserved: \(error.localizedDescription)")
-            try? FileManager.default.removeItem(at: tempURL)
-        }
-    }
+    // MARK: - Offline audio duration
 
     /// Explicit repair for songs downloaded by earlier versions.
     func repairExistingDownloadIfNeeded(videoId: String, force: Bool = false) async {
-        // Quiet endings can be intentional. Only the explicit repair menu may trim audio.
+        // Existing files are corrected only through the explicit menu action.
         guard force else { return }
         if let existing = repairTasks[videoId] {
             await existing.task.value
             return
         }
         guard let downloaded = downloads.first(where: { $0.id == videoId }),
-              let local = localFileURL(for: videoId) else { return }
+              let local = localFileURL(for: videoId), local.pathExtension.lowercased() == "m4a" else { return }
         let token = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.repairM4ATailIfNeeded(at: local, expectedDuration: downloaded.song.duration)
-            guard !Task.isCancelled, self.repairTasks[videoId]?.token == token,
-                  let index = self.downloads.firstIndex(where: {
-                      $0.id == videoId && $0.assetLocation == downloaded.assetLocation
-                  }), let size = try? local.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return }
-            let old = self.downloads[index]
-            self.downloads[index] = DownloadedSong(
-                id: old.id, song: old.song, assetLocation: old.assetLocation,
-                fileSize: Int64(size), downloadedAt: old.downloadedAt,
-                thumbnailFileName: old.thumbnailFileName
-            )
-            self.saveCatalog()
+            do {
+                let prepared = try await DownloadedAudioProcessor.prepare(at: local)
+                defer { if prepared.url != local { try? FileManager.default.removeItem(at: prepared.url) } }
+                guard !Task.isCancelled, self.repairTasks[videoId]?.token == token,
+                      let index = self.downloads.firstIndex(where: {
+                          $0.id == videoId && $0.assetLocation == downloaded.assetLocation
+                      }), let size = try prepared.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return }
+                let old = self.downloads[index]
+                var location = old.assetLocation
+                if prepared.url != local {
+                    location = "\(UUID().uuidString).m4a"
+                    try FileManager.default.moveItem(at: prepared.url, to: Self.audioDirectory.appendingPathComponent(location))
+                }
+                self.downloads[index] = DownloadedSong(
+                    id: old.id, song: old.song.withDuration(prepared.duration), assetLocation: location,
+                    fileSize: Int64(size), downloadedAt: old.downloadedAt,
+                    thumbnailFileName: old.thumbnailFileName
+                )
+                self.saveCatalog()
+                if location != old.assetLocation { try? FileManager.default.removeItem(at: local) }
+                MixtapeNativeAudioTrace.add("offline duration: \(prepared.originalDuration)s -> \(prepared.duration)s (\(prepared.method.rawValue))")
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.logger.warning("Offline duration correction failed: \(error.localizedDescription)")
+            }
         }
         repairTasks[videoId] = (token, task)
         await withTaskCancellationHandler {
@@ -700,7 +602,7 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
     }
 
     /// Decode samples near the beginning, middle and end before publishing a file.
-    /// Silence is valid music data and is never trimmed by download validation.
+    /// Duration normalization runs separately before publishing the validated file.
     nonisolated private static func validateDownloadedAudio(at url: URL) throws -> Int64 {
         let size = Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
         guard size > 0 else {
@@ -733,23 +635,31 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
     }
 
     /// Both HTTP range transfers and restored background tasks use this finalizer.
-    private func finishDownloadedAudio(videoId: String, token: UUID, fileURL: URL, mimeType: String) async {
+    private func finishDownloadedAudio(videoId: String, token: UUID, fileURL: URL, mimeType: String, bitRate: Int? = nil) async {
         // The staged URL belongs only to this attempt, so cancelling cannot delete
         // another attempt's media while validation is suspended.
-        defer { try? FileManager.default.removeItem(at: fileURL) }
+        var normalizedURL: URL?
+        defer {
+            try? FileManager.default.removeItem(at: fileURL)
+            if let normalizedURL, normalizedURL != fileURL { try? FileManager.default.removeItem(at: normalizedURL) }
+        }
         guard isCurrentAttempt(videoId: videoId, token: token) else { return }
         do {
+            let prepared = try await DownloadedAudioProcessor.prepare(at: fileURL, bitRate: bitRate)
+            normalizedURL = prepared.url
+            guard isCurrentAttempt(videoId: videoId, token: token) else { return }
             let size = try await Task.detached(priority: .utility) {
-                try Self.validateDownloadedAudio(at: fileURL)
+                try Self.validateDownloadedAudio(at: prepared.url)
             }.value
             guard isCurrentAttempt(videoId: videoId, token: token),
                   let index = activeTasks.firstIndex(where: { $0.id == videoId }) else { return }
-            let song = activeTasks[index].song
+            let song = activeTasks[index].song.withDuration(prepared.duration)
+            activeTasks[index].progress = 1
             let ext = mimeType.hasPrefix("audio/webm") ? "opus" : "m4a"
             let fileName = "\(token.uuidString).\(ext)"
             let destination = Self.audioDirectory.appendingPathComponent(fileName)
             try FileManager.default.createDirectory(at: Self.audioDirectory, withIntermediateDirectories: true)
-            try FileManager.default.moveItem(at: fileURL, to: destination)
+            try FileManager.default.moveItem(at: prepared.url, to: destination)
             let previous = downloads.filter { $0.id == videoId }
             downloads.removeAll { $0.id == videoId }
             downloads.append(DownloadedSong(
@@ -767,6 +677,7 @@ final class DownloadManager: NSObject, DownloadManagerProtocol {
                 }
             }
             MixtapeNativeAudioTrace.add("download: saved decodable AAC bytes=\(size)")
+            MixtapeNativeAudioTrace.add("download duration: \(prepared.originalDuration)s -> \(prepared.duration)s (\(prepared.method.rawValue))")
             Task { [weak self] in
                 guard let self, let thumbnail = await self.cacheThumbnail(for: song) else { return }
                 guard let i = self.downloads.firstIndex(where: { $0.id == videoId && $0.assetLocation == fileName }) else {

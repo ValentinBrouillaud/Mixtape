@@ -79,6 +79,14 @@ nonisolated struct Song: Identifiable, Codable, Hashable, Sendable {
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    /// Correct offline duration while retaining identity and library metadata.
+    nonisolated func withDuration(_ duration: TimeInterval) -> Song {
+        Song(id: id, title: title, artists: artists, album: album,
+             duration: duration.isFinite && duration > 0 ? duration : self.duration,
+             thumbnailURL: thumbnailURL, videoId: videoId, videoType: videoType,
+             likeStatus: likeStatus, isInLibrary: isInLibrary, feedbackTokens: feedbackTokens)
+    }
 }
 
 extension Song {

@@ -1,7 +1,7 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v40.2 (build 42)**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.3 (build 43)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
 
@@ -58,7 +58,15 @@ Catalogue writes are ordered, cancelled requests cannot revive, and interrupted
 queue entries restart when the app next launches. iOS grants only finite
 background execution for these foreground transfers; keeping a large download
 running indefinitely after leaving or terminating the app is not guaranteed.
-Silence is preserved. Tail repair is an explicit manual action.
+Before publication, the downloaded audio is decoded sequentially to its actual
+end. Long trailing silence is removed automatically, retaining a 0.2-second
+ending margin, quiet signal above -70 dBFS, leading silence and internal gaps.
+AAC packets are remuxed when possible; malformed timelines fall back to a fresh
+AAC export at the selected bitrate. Output duration and decoded signal are
+verified before saving, and the catalogue records the measured file duration.
+Entirely silent content is kept rather than replaced by an empty file.
+Existing files can be corrected through the explicit "Corriger la durée du
+fichier" menu; failures and cancellations preserve the original download.
 
 Build an unsigned IPA from the GitHub Actions workflow
 `.github/workflows/build-ios18-v40.yml`, or open `Mixtape.xcodeproj` with
