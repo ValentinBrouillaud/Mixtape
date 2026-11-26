@@ -40,8 +40,9 @@ nonisolated enum DownloadedAudioProcessor {
         }
     }
 
-    /// Decode sequentially to EOF. File length metadata and random seeks can be
-    /// misleading when timestamps advertise minutes beyond the real packets.
+    /// Decode the file's sample frames sequentially. Movie timestamps may
+    /// advertise minutes beyond those packets. Never request another block
+    /// after the audio reader reaches its end (some codecs throw nilError).
     static func scan(at url: URL) throws -> Scan {
         try Task.checkCancellation()
         guard url.isFileURL else { throw Failure.invalidAudio }
@@ -52,9 +53,11 @@ nonisolated enum DownloadedAudioProcessor {
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 32_768) else { throw Failure.invalidAudio }
         var frames: AVAudioFramePosition = 0
         var lastSignal: AVAudioFramePosition?
-        while true {
+        while file.framePosition < file.length {
             try Task.checkCancellation()
-            try file.read(into: buffer, frameCount: buffer.frameCapacity)
+            let remaining = file.length - file.framePosition
+            let requested = AVAudioFrameCount(min(remaining, AVAudioFramePosition(buffer.frameCapacity)))
+            try file.read(into: buffer, frameCount: requested)
             let count = Int(buffer.frameLength)
             guard count > 0 else { break }
             guard let channels = buffer.floatChannelData else { throw Failure.invalidAudio }
