@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import LocalAuthentication
 import Security
 
 /// Metadata-only fallback for re-signers that omit the file App Group. Profile
@@ -34,13 +35,17 @@ nonisolated enum MixtapeWidgetKeychain {
         let widget = environment.widgetProfile
         // Sideloadly may omit the extension's embedded profile. Its renamed
         // bundle ID is another name hint when the parent profile is unreadable.
-        let bundleHint = [environment.appIdentifier, environment.widgetIdentifier].compactMap { $0 }
-            .filter { $0.hasPrefix("com.alexcding.mixtape.") }
-            .flatMap { $0.split(separator: ".").map(String.init) }
-            .first { $0.utf8.count == 10 && $0.utf8.allSatisfy({ (65...90).contains($0) || (48...57).contains($0) }) }
+        var bundleHint: String?
+        for optionalID in [environment.appIdentifier, environment.widgetIdentifier] {
+            guard let identifier = optionalID, identifier.hasPrefix("com.alexcding.mixtape.") else { continue }
+            for component in identifier.split(separator: ".") {
+                let hint = String(component)
+                if validPrefix(hint) { bundleHint = hint; break }
+            }
+            if bundleHint != nil { break }
+        }
         let prefix = app?.appIdentifierPrefix ?? app?.teamIdentifier ?? widget?.appIdentifierPrefix ?? widget?.teamIdentifier ?? bundleHint
-        guard let prefix, prefix.utf8.count == 10,
-              prefix.utf8.allSatisfy({ (65...90).contains($0) || (48...57).contains($0) }) else { return [] }
+        guard let prefix, validPrefix(prefix) else { return [] }
         if let other = widget?.appIdentifierPrefix ?? widget?.teamIdentifier, other != prefix { return [] }
         var groups = [prefix + ".com.alexcding.mixtape.widgets.shared"]
         if let host = environment.appIdentifier, host.hasPrefix("com.alexcding.mixtape") { groups.append(prefix + "." + host) }
@@ -183,6 +188,10 @@ nonisolated enum MixtapeWidgetKeychain {
         !name.isEmpty && name.utf8.count <= 255 && name == (name as NSString).lastPathComponent && name != "." && name != ".."
     }
 
+    private static func validPrefix(_ prefix: String) -> Bool {
+        prefix.utf8.count == 10 && prefix.utf8.allSatisfy { (65...90).contains($0) || (48...57).contains($0) }
+    }
+
     private static func query(account: String, candidate: Candidate) -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -196,7 +205,9 @@ nonisolated enum MixtapeWidgetKeychain {
 
     private static func read(account: String, candidate: Candidate) -> (OSStatus, Data?) {
         var query = query(account: account, candidate: candidate)
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
