@@ -48,7 +48,7 @@ struct PlaylistCard: View {
                 .squareFrame(size: cardSize)
             }
         }
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: 5))
         .modifier(HoverPlayOverlay())
     }
 
@@ -134,7 +134,7 @@ struct PlaylistCard: View {
     private var titleAndSubtitle: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(playlist.title)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
 
             if let author = playlist.author {

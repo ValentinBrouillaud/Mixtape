@@ -5,17 +5,22 @@ import PackageDescription
 // signing, audio hardware or an external music-service account.
 let package = Package(
     name: "NativeAudioTransport",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     products: [.library(name: "NativeAudioTransport", targets: ["NativeAudioTransport"])],
     targets: [
         .target(
             name: "NativeAudioTransport",
-            path: "Services",
+            path: ".",
             sources: [
-                "Player/HTTPAudioRangeClient.swift",
-                "Player/HTTPAudioResourceLoader.swift",
-                "Player/MixtapeHTTPAudioTransfer.swift",
-                "API/Models/PlayerResponse.swift",
+                "Services/Player/HTTPAudioRangeClient.swift",
+                "Services/Player/HTTPAudioResourceLoader.swift",
+                "Services/Player/MixtapeHTTPAudioTransfer.swift",
+                "Services/API/Models/PlayerResponse.swift",
+                "Services/Charts/RegionalChartDirectory.swift",
+                "Services/History/ListeningHistoryPolicy.swift",
+                "Services/History/HistoryThumbnail.swift",
+                "Services/Download/DownloadedAudioProcessor.swift",
+                "Models/PlaybackQueue.swift",
             ]
         ),
         .testTarget(
@@ -24,5 +29,9 @@ let package = Package(
             path: "Tests/NativeAudioTransportTests",
             exclude: ["Fixtures"]
         ),
+        .target(name: "ArtistNavigation", path: "Models/YTMusic", sources: ["Artist.swift", "Song.swift", "Album.swift", "LikeStatus.swift"]),
+        .testTarget(name: "ArtistNavigationTests", dependencies: ["ArtistNavigation"], path: "Tests/ArtistNavigationTests"),
+        .target(name: "SharedWidgetModel", path: "SharedWidgets"),
+        .testTarget(name: "WidgetSnapshotTests", dependencies: ["SharedWidgetModel"], path: "Tests/WidgetSnapshotTests"),
     ]
 )

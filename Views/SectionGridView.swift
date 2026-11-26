@@ -44,12 +44,9 @@ struct SectionGridView: View {
     private func itemCard(item: HomeSectionItem) -> some View {
         switch item {
         case let .song(song):
-            Button {
+            SongCard(song: song) {
                 Task { await viewModel.playerManager.playWithRadio(song: song) }
-            } label: {
-                SongCard(song: song)
             }
-            .buttonStyle(.interactiveCard)
         case let .playlist(playlist):
             Button {
                 self.viewModel.didSelectPlaylist(playlist)

@@ -12,10 +12,26 @@ import SwiftUI
 /// Used by HomeCoordinator - navigation is handled via NavigationLink(value:).
 struct HomeContentView: View {
     @Bindable var viewModel: HomeViewModel
+    @State private var history = ListeningHistoryStore.shared
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 32) {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                if !history.entries.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Recently played", tableName: "MixtapeTheme")
+                            .font(.system(size: 23, weight: .bold))
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                            ForEach(history.entries.prefix(6)) { entry in
+                                MixtapeRecentTile(title: entry.title, onPlay: {
+                                    Task { await viewModel.playerManager.play(song: entry.playbackSong) }
+                                }) {
+                                    HistoryArtworkView(videoId: entry.videoId, size: 52)
+                                }
+                            }
+                        }
+                    }.padding(.horizontal, 16)
+                }
                 ForEach(self.viewModel.sections) { section in
                     self.sectionView(section)
                 }
@@ -30,10 +46,11 @@ struct HomeContentView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.vertical, 24)
+            .padding(.vertical, 16)
             .scrollClipDisabled()
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .onScrollTargetVisibilityChange(idType: HomeSection.ID.self, threshold: 0.2) { visibleIDs in
             self.viewModel.loadMoreIfNeeded(visibleSectionIDs: Set(visibleIDs))
         }
@@ -69,12 +86,9 @@ struct HomeContentView: View {
     private func itemCard(item: HomeSectionItem) -> some View {
         switch item {
         case let .song(song):
-            Button {
+            SongCard(song: song) {
                 Task { await viewModel.playerManager.playWithRadio(song: song) }
-            } label: {
-                SongCard(song: song)
             }
-            .buttonStyle(.interactiveCard)
         case let .playlist(playlist):
             Button {
                 self.viewModel.didSelectPlaylist(playlist)

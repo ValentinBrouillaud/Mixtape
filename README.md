@@ -1,9 +1,65 @@
 # Mixtape
 
 This fork now contains the iOS 18 port directly in source. The active build is
-**iOS 18 Native Audio v39**. The historical patch-generating workflows are kept
+**iOS 18 Native Audio v40.6 (build 46)**. The historical patch-generating workflows are kept
 in `Tools/LegacyWorkflows/` for reference; they expect the original upstream
 source and must not be reapplied to this tree.
+
+
+Build 46 simplifies the widgets to artwork, track/artist text and recent artwork
+shortcuts, removing repeated branding, captions, decorative buttons and playlist
+counts. The history list shows each track and artist without a relative-time
+counter. CI renders the actual small/medium SwiftUI layouts, including empty
+and error states. These Mac layout previews do not replace an iPhone check.
+
+Version 40 adds the approved Resume, Recents and Favorite Playlist home-screen
+widgets; local history of 100 distinct listened tracks; validated artist links;
+and a persistent queue with FIFO user additions, play-next, removal and drag
+reordering. History requires five advancing seconds and stores display metadata
+and bounded artwork only, never audio. Repeated songs move to the front.
+
+Discovery provides country-specific official YouTube playlists, retaining the
+first 50 tracks in source order. Weekly periods are identified from source titles
+or the description of the exact official playlist. Monthly charts are explicitly
+unavailable. Chart availability depends on the service session and country;
+there is also a link to official YouTube Charts.
+
+Widgets open Mixtape to resume, replay a recent track or open a chosen local
+playlist. Both app and widget extension share metadata through the App Group
+`group.com.alexcding.mixtape`; sideload signing must provision and preserve a
+common authorized group for both bundles. Build 41 embeds that request in
+temporary ad-hoc signatures before packaging so a re-signing tool can read it;
+the original fully unsigned build 40 did not contain those entitlement requests.
+Ad-hoc preparation does not itself authorize installation or create a profile.
+Build 44 inspects both installed profiles to select a common Mixtape group,
+including team-suffixed names used during re-signing. An unrelated group (such
+as SideStore) is never selected simply because it is the only available group.
+Profiles supply name hints only; access still requires OS authorization. Unknown
+profile formats retain a fallback to explicit configuration and the original ID.
+Settings > Widgets distinguishes app access, app publication and confirmed widget
+reception, and its diagnostic lists both profiles and any missing common group.
+Build 45 also offers a Keychain Services fallback when no file App Group is
+available, so re-signers such as Sideloadly can use an authorized common keychain
+identity instead. It exchanges only the metadata snapshot, bounded thumbnail
+JPEGs and a widget read receipt in a dedicated service namespace. Every operation
+is checked by the OS; profile hints do not grant access. Items remain on the
+device and are accessible after its first unlock. A successful host write still
+does not prove the extension received data: Settings waits for a widget receipt.
+This fallback needs physical validation after the final Sideloadly signature.
+Unavailable sharing and corrupt/missing snapshots now have distinct widget states.
+The extension does not stream or download audio. Open Mixtape once after install
+so it can populate the widget snapshot. Widget publication and tap routing need
+a physical iOS 18 device check after signing.
+
+Build 42 prepares the embedded MobileVLCKit framework as arm64-only, checking
+that thinning preserves the original arm64 payload byte for byte before signing.
+Preparation signatures use SHA-256 only, and the IPA stores Info.plist entries
+without compression while verifying that every signed file remains unchanged.
+These checks validate the package before a signing tool processes it; installation
+and widget sharing after Sideloadly re-signing still require an iPhone check.
+
+Additional ideas (sleep timer, playlist search, Wi-Fi-only downloads) remain
+unimplemented pending the user's approval.
 
 The native player is preferred on both Wi-Fi and cellular. Settings retain an
 explicit Web mode and an optional Web fallback for the same track. Native audio
@@ -19,10 +75,18 @@ Catalogue writes are ordered, cancelled requests cannot revive, and interrupted
 queue entries restart when the app next launches. iOS grants only finite
 background execution for these foreground transfers; keeping a large download
 running indefinitely after leaving or terminating the app is not guaranteed.
-Silence is preserved. Tail repair is an explicit manual action.
+Before publication, the downloaded audio is decoded sequentially to its actual
+end. Long trailing silence is removed automatically, retaining a 0.2-second
+ending margin, quiet signal above -70 dBFS, leading silence and internal gaps.
+AAC packets are remuxed when possible; malformed timelines fall back to a fresh
+AAC export at the selected bitrate. Output duration and decoded signal are
+verified before saving, and the catalogue records the measured file duration.
+Entirely silent content is kept rather than replaced by an empty file.
+Existing files can be corrected through the explicit "Corriger la durée du
+fichier" menu; failures and cancellations preserve the original download.
 
 Build an unsigned IPA from the GitHub Actions workflow
-`.github/workflows/build-ios18-native-v39.yml`, or open `Mixtape.xcodeproj` with
+`.github/workflows/build-ios18-v40.yml`, or open `Mixtape.xcodeproj` with
 Xcode 26.2 on macOS. The app deployment target is iOS 18.0. The workflow runs
 Foundation transport tests, installs VLCKit, builds the app, checks embedded
 minimum OS versions and uploads the IPA plus diagnostics. Signing/sideloading
@@ -65,7 +129,7 @@ Mixtape is a port of [**kaset**](https://github.com/sozercan/kaset) by [@sozerca
 
 | | kaset | Mixtape |
 |---|---|---|
-| Platforms | macOS 15.4+ | macOS 26+ **and iOS 26+** |
+| Platforms | macOS 15.4+ | macOS 26+ **and iOS 18+** |
 | Scope | YouTube Music and YouTube video | YouTube Music only |
 | Navigation | SwiftUI environment-based | Coordinator pattern shared by both platforms |
 | Dependency injection | — | [Factory](https://github.com/hmlongco/Factory) container, protocol-based services |
@@ -100,8 +164,8 @@ kaset has features Mixtape does not (yet): YouTube video, equalizer, smart shuff
 
 | Engine | How it plays | Quality | Platforms |
 |---|---|---|---|
-| Web Player (default) | Persistent `WKWebView`, DRM handled by WebKit | Up to 300 kbps Opus with YouTube Premium | macOS |
-| Native Player | `AVPlayer` on direct streams | 130 kbps AAC | macOS, iOS |
+| Web Player (compatibility) | Persistent `WKWebView`, DRM handled by WebKit | Up to 300 kbps Opus with YouTube Premium | macOS |
+| Native Player (default) | `AVPlayer` on direct streams | 130 kbps AAC | macOS, iOS |
 | VLC Player | VLCKit / MobileVLCKit | 160 kbps Opus | macOS, iOS |
 
 ### Downloads
@@ -146,15 +210,15 @@ English, French (incl. Canadian), Japanese, and Chinese (Simplified, Traditional
 | | |
 |---|---|
 | macOS | 26.0+ |
-| iOS | 26.1+ |
-| Xcode | 26+ |
-| Swift | 6.0 |
+| iOS | 18.0+ |
+| Xcode | 26.2 |
+| Swift toolchain | 6.2+ |
 | [Carthage](https://github.com/Carthage/Carthage) | for VLCKit |
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/alexcding/Mixtape.git
+git clone --branch codex/ios18-v40 https://github.com/ValentinBrouillaud/Mixtape.git
 cd Mixtape
 
 # Fetch VLCKit (binary XCFrameworks, ~500 MB)

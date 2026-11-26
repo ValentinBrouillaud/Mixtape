@@ -6,15 +6,21 @@ import SwiftUI
 struct SongCard: View {
     @Environment(\.cardSize) private var cardSize
     let song: Song
+    let onPlay: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            thumbnail
+            Button(action: onPlay) {
+                thumbnail
+            }
+            .buttonStyle(.interactiveCard)
             titleAndSubtitle
         }
         .contextMenu {
             DownloadContextMenuItems(song: song)
+            QueueContextMenuItems(song: song)
             MixtapeQuickAddMenu(song: song)
+            ArtistContextMenuItems(artists: song.artists)
         }
     }
 
@@ -31,7 +37,7 @@ struct SongCard: View {
                 .foregroundStyle(.white)
                 .shadow(radius: 6)
         }
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: 5))
     }
 
     private var placeholderView: some View {
@@ -42,11 +48,15 @@ struct SongCard: View {
 
     private var titleAndSubtitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(song.title)
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
+            Button(action: onPlay) {
+                Text(song.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
 
-            Text(song.artistsDisplay)
+            ArtistLinksView(artists: song.artists)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

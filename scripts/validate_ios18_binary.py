@@ -55,6 +55,12 @@ def main() -> int:
     if info.get("MinimumOSVersion") != "18.0":
         problems.append(f"App MinimumOSVersion is {info.get('MinimumOSVersion')}, expected 18.0")
     candidates = [args.app / info["CFBundleExecutable"]]
+    for extension in args.app.rglob("*.appex"):
+        with (extension / "Info.plist").open("rb") as handle:
+            extension_info = plistlib.load(handle)
+        if version_tuple(extension_info.get("MinimumOSVersion", "99.0")) > (18, 0, 0):
+            problems.append(f"{extension.name} requires iOS above 18.0")
+        candidates.append(extension / extension_info["CFBundleExecutable"])
     candidates.extend(path for path in args.app.rglob("*.dylib") if path.is_file())
     for framework in args.app.rglob("*.framework"):
         with (framework / "Info.plist").open("rb") as handle:
@@ -63,6 +69,13 @@ def main() -> int:
     for binary in sorted(set(candidates)):
         entry = {"binary": str(binary.relative_to(args.app))}
         try:
+            architecture = subprocess.run(
+                ["xcrun", "lipo", "-archs", str(binary)],
+                text=True, capture_output=True, check=False,
+            )
+            entry["architectures"] = architecture.stdout.split()
+            if architecture.returncode != 0 or entry["architectures"] != ["arm64"]:
+                problems.append(f"{entry['binary']} must contain arm64 only: {entry['architectures']}")
             entry["minimumIOS"] = minimum_versions(binary)
             if any(version_tuple(value) > (18, 0, 0) for value in entry["minimumIOS"]):
                 problems.append(f"{entry['binary']} requires iOS {entry['minimumIOS']}")

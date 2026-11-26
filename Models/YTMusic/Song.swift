@@ -3,7 +3,7 @@ import Foundation
 // MARK: - VideoType
 
 /// Represents the type of music video content.
-enum VideoType: String, Codable, Sendable {
+nonisolated enum VideoType: String, Codable, Sendable {
     /// Audio Track Video - audio-only content with static/visualizer image
     case atv = "MUSIC_VIDEO_TYPE_ATV"
     /// Official Music Video
@@ -15,7 +15,7 @@ enum VideoType: String, Codable, Sendable {
 // MARK: - Song
 
 /// Represents a song/track.
-struct Song: Identifiable, Codable, Hashable, Sendable {
+nonisolated struct Song: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let title: String
     let artists: [Artist]
@@ -78,6 +78,14 @@ struct Song: Identifiable, Codable, Hashable, Sendable {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// Correct offline duration while retaining identity and library metadata.
+    nonisolated func withDuration(_ duration: TimeInterval) -> Song {
+        Song(id: id, title: title, artists: artists, album: album,
+             duration: duration.isFinite && duration > 0 ? duration : self.duration,
+             thumbnailURL: thumbnailURL, videoId: videoId, videoType: videoType,
+             likeStatus: likeStatus, isInLibrary: isInLibrary, feedbackTokens: feedbackTokens)
     }
 }
 
@@ -148,12 +156,12 @@ extension Song {
 // MARK: - Equatable & Hashable
 
 extension Song {
-    static func == (lhs: Song, rhs: Song) -> Bool {
+    nonisolated static func == (lhs: Song, rhs: Song) -> Bool {
         // Compare by video ID for identity equality
         lhs.videoId == rhs.videoId
     }
 
-    func hash(into hasher: inout Hasher) {
+    nonisolated func hash(into hasher: inout Hasher) {
         hasher.combine(self.videoId)
     }
 }

@@ -167,6 +167,7 @@ struct ArtistDetailView: View {
                     }
                 }
                 .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
                 .onScrollGeometryChange(for: CGFloat.self) { geo in
                     geo.contentOffset.y + geo.contentInsets.top
                 } action: { _, newValue in
@@ -452,6 +453,8 @@ struct ArtistDetailView: View {
             }
         }
         .contextMenu {
+            QueueContextMenuItems(song: song)
+            ArtistContextMenuItems(artists: song.artists)
             Button {
                 Task {
                     let allSongs = await self.viewModel.getAllSongs()

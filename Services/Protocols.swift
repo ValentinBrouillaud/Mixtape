@@ -52,6 +52,9 @@ protocol YTMusicClientProtocol: Sendable {
     /// Fetches the charts page content (initial sections only for fast display).
     func getCharts() async throws -> HomeResponse
 
+    /// Official regional chart playlists. No synthesized monthly ranking.
+    func getRegionalCharts(country: String) async throws -> RegionalChartDirectory
+
     /// Fetches the next batch of charts sections via continuation.
     func getChartsContinuation() async throws -> [HomeSection]?
 

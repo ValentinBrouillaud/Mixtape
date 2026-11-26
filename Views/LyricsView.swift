@@ -145,7 +145,7 @@ struct LyricsView: View {
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(.purple.opacity(0.2))
+                            .background(MixtapePalette.accent.opacity(0.2))
                             .clipShape(Capsule())
                     }
                 }
@@ -159,7 +159,7 @@ struct LyricsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
-        .background(.purple.opacity(0.05))
+        .background(MixtapePalette.accent.opacity(0.05))
     }
 
     /// Shows partial content as it streams in from the AI.
@@ -191,7 +191,7 @@ struct LyricsView: View {
                                 .font(.caption)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .background(.purple.opacity(0.2))
+                                .background(MixtapePalette.accent.opacity(0.2))
                                 .clipShape(Capsule())
                         }
                     }
@@ -220,7 +220,7 @@ struct LyricsView: View {
                 .padding(.bottom, 12)
             }
         }
-        .background(.purple.opacity(0.05))
+        .background(MixtapePalette.accent.opacity(0.05))
     }
 
 #endif

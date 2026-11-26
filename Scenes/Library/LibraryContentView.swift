@@ -15,22 +15,27 @@ struct LibraryContentView: View {
     @State private var showCreatePlaylist = false
     @State private var playlistName = ""
     @State private var selectedQuickPlaylist: MixtapeQuickPlaylist?
+    @State private var history = ListeningHistoryStore.shared
+    @State private var showListeningHistory = false
+    @State private var widgetNavigation = WidgetNavigationRouter.shared
 
     private let gridColumns = [GridItem(.adaptive(minimum: .adaptiveGridMinimum - 40, maximum: .adaptiveGridMaximum), spacing: 16)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                listeningHistorySection
                 quickPlaylistsSection
                 playlistsSection
                 albumsSection
                 artistsSection
                 downloadsSection
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .loading(viewModel.loadingState) {
             viewModel.refresh()
         }
@@ -67,6 +72,50 @@ struct LibraryContentView: View {
                 MixtapeQuickPlaylistDetailView(playlistID: playlist.id)
             }
         }
+        .sheet(isPresented: $showListeningHistory) {
+            NavigationStack { ListeningHistoryView() }
+        }
+        .onChange(of: widgetNavigation.pendingPlaylistID, initial: true) { _, id in
+            guard let id else { return }
+            selectedQuickPlaylist = quickPlaylists.playlists.first { $0.id == id }
+            widgetNavigation.pendingPlaylistID = nil
+        }
+        .toolbar {
+            // Keep local history reachable even if the remote library is offline/loading.
+            ToolbarItem(placement: .primaryAction) {
+                Button { showListeningHistory = true } label: {
+                    Label {
+                        Text("Listening History", tableName: "ListeningHistory")
+                    } icon: { Image(systemName: "clock.arrow.circlepath") }
+                }
+            }
+        }
+    }
+
+    private var listeningHistorySection: some View {
+        Button { showListeningHistory = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title2)
+                    .frame(width: 44, height: 44)
+                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Listening History", tableName: "ListeningHistory").font(.headline)
+                    if let latest = history.entries.first {
+                        Text(latest.title).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    } else {
+                        Text("Last 100 songs", tableName: "ListeningHistory")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .mixtapeCard()
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -95,7 +144,7 @@ struct LibraryContentView: View {
                         selectedQuickPlaylist = playlist
                     } label: {
                         HStack(spacing: 12) {
-                            MixtapeQuickPlaylistArt(playlist: playlist, size: 66)
+                            MixtapeQuickPlaylistArt(playlist: playlist, size: 56)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(playlist.name)
                                     .font(.headline)
@@ -110,8 +159,8 @@ struct LibraryContentView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .padding(11)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                        .mixtapeCard()
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -173,7 +222,7 @@ struct LibraryContentView: View {
                                 .foregroundStyle(.tertiary)
                             Text("\(viewModel.activeDownloadCount) downloading")
                                 .font(.subheadline)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(MixtapePalette.accent)
                         }
                     }
                 }
@@ -325,11 +374,13 @@ final class MixtapeQuickPlaylists {
            let saved = try? JSONDecoder().decode([MixtapeQuickPlaylist].self, from: data) {
             playlists = saved
         }
+        WidgetSnapshotBridge.shared.updatePlaylists(playlists)
     }
 
     private func save() {
         guard let encoded = try? JSONEncoder().encode(playlists) else { return }
         UserDefaults.standard.set(encoded, forKey: Self.storageKey)
+        WidgetSnapshotBridge.shared.updatePlaylists(playlists)
     }
 
     @discardableResult
@@ -498,29 +549,35 @@ struct MixtapeQuickPlaylistDetailView: View {
                                         await Container.shared.playerManager().playQueue(playlist.songs, startingAt: index)
                                     }
                                 } label: {
-                                    HStack(spacing: 12) {
-                                        RemoteImage(url: song.thumbnailURL) {
-                                            RoundedRectangle(cornerRadius: 7)
-                                                .fill(.quaternary)
-                                                .overlay { Image(systemName: "music.note") }
-                                        }
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 52, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(song.title)
-                                                .font(.subheadline.weight(.medium))
-                                                .lineLimit(2)
-                                                .multilineTextAlignment(.leading)
-                                            Text(song.artistsDisplay)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    RemoteImage(url: song.thumbnailURL) {
+                                        RoundedRectangle(cornerRadius: 7)
+                                            .fill(.quaternary)
+                                            .overlay { Image(systemName: "music.note") }
                                     }
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                                 .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Button {
+                                        Task {
+                                            await Container.shared.playerManager().playQueue(playlist.songs, startingAt: index)
+                                        }
+                                    } label: {
+                                        Text(song.title)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                    ArtistLinksView(artists: song.artists, onNavigate: { dismiss() })
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 if Container.shared.downloadManager().localFileURL(for: song.videoId) != nil {
                                     Image(systemName: "arrow.down.circle.fill")
@@ -532,6 +589,8 @@ struct MixtapeQuickPlaylistDetailView: View {
                                         .accessibilityLabel("Streaming")
                                 }
                                 Menu {
+                                    QueueContextMenuItems(song: song)
+                                    ArtistContextMenuItems(artists: song.artists, onNavigate: { dismiss() })
                                     DownloadContextMenuItems(song: song)
                                     Button(role: .destructive) {
                                         store.remove(videoId: song.videoId, from: playlistID)
@@ -563,6 +622,7 @@ struct MixtapeQuickPlaylistDetailView: View {
         }
         .listStyle(.plain)
         .mixtapeScrollAbovePlayer()
+        .mixtapeScreenStyle()
         .navigationTitle(playlist?.name ?? "Playlist")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

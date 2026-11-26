@@ -8,9 +8,6 @@ struct PlayerBarCover: View {
     @Bindable var viewModel: PlayerViewModel
     let onDismiss: () -> Void
 
-    @State private var dragOffset: CGFloat = 0
-    @State private var containerWidth: CGFloat = 0
-    @State private var trackInfoOpacity: Double = 1.0
     @Namespace private var animation
 
     /// Whether showing lyrics or queue inline (replaces artwork)
@@ -19,121 +16,27 @@ struct PlayerBarCover: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag indicator
-            Capsule()
-                .fill(Color.secondary)
-                .frame(width: 56, height: 5)
-                .padding(.top, 6)
-
-            // Content area
-            ZStack(alignment: isShowingPanel ? .topLeading : .center) {
-                // Single artwork that animates position/size
-                HStack(spacing: isShowingPanel ? 12 : 0) {
-                    artworkView()
-
-                    // Inline track info when showing panel
-                    if isShowingPanel {
-                        trackInfoSection()
-                            .opacity(trackInfoOpacity)
-                    }
-                }
-                .padding(.top, isShowingPanel ? 8 : 36)
-                .padding(.bottom, isShowingPanel ? 0 : 80)
-                .frame(maxWidth: .infinity, alignment: isShowingPanel ? .leading : .center)
-
-                // Track info below artwork (only when not showing panel)
-                if !isShowingPanel {
-                    VStack {
-                        Spacer()
-                        trackInfoSection()
-                    }
-                    .opacity(trackInfoOpacity)
-                }
-
-                // Panel content
-                if isShowingPanel {
-                    VStack {
-                        Spacer()
-                            .frame(height: 64)
-                        panelContent()
-                    }
-                }
-            }
-            .frame(maxHeight: .infinity)
-            .animation(.easeInOut, value: isShowingPanel)
-
-            Spacer()
-                .frame(height: 24)
-
-            // Progress bar with times
+        MixtapeFullPlayerLayout(
+            sourceTitle: viewModel.sourcePlaylist?.title ?? "Mixtape",
+            showsPanel: isShowingPanel,
+            onDismiss: onDismiss
+        ) {
+            artworkView()
+        } info: {
+            trackInfoSection()
+        } progress: {
             progressSection()
-
-            Spacer()
-                .frame(height: 42)
-
-            // Playback controls
+        } controls: {
             playbackControls()
-
-            Spacer()
-                .frame(height: 42)
-
-            // Volume slider
-            volumeSection()
-
-            Spacer()
-                .frame(height: 24)
-
-            // Bottom action buttons
+        } actions: {
             bottomActions()
-
-            Spacer()
-                .frame(height: 12)
+        } panel: {
+            panelContent()
         }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { newWidth in
-            containerWidth = newWidth
-        }
-        .background {
-            // Album art as full background with smooth crossfade on track change
-            RemoteImage(url: viewModel.currentTrack?.thumbnailURL?.cardThumbnailURL, placeholder: {
-                Color(.systemGray6)
-            })
-            .aspectRatio(contentMode: .fill)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .blur(radius: 60)
-            .scaleEffect(1.2) // Prevent blur edges from showing
-            .clipped()
-            .overlay(.regularMaterial)
-            .ignoresSafeArea()
-            .animation(.easeInOut(duration: 0.5), value: viewModel.currentTrack?.videoId)
-        }
-        .preferredColorScheme(.dark)
-        .onChange(of: viewModel.volume) { _, _ in
-            viewModel.syncVolumeValue()
-        }
-        .onChange(of: isShowingPanel) { _, _ in
-            // Fade out immediately, then fade in after geometry animation completes
-            trackInfoOpacity = 0
-            Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                await MainActor.run {
-                    withAnimation(.easeIn(duration: 0.2)) {
-                        trackInfoOpacity = 1
-                    }
-                }
-            }
-        }
+        .onChange(of: viewModel.volume) { _, _ in viewModel.syncVolumeValue() }
     }
 
     // MARK: - Artwork
-
-    private var artworkSize: CGFloat {
-        isShowingPanel ? 48 : containerWidth * 0.64
-    }
 
     @ViewBuilder
     private func artworkView() -> some View {
@@ -152,7 +55,6 @@ struct PlayerBarCover: View {
             }
         )
         .aspectRatio(contentMode: .fill)
-        .frame(width: artworkSize, height: artworkSize)
         .clipShape(RoundedRectangle(cornerRadius: isShowingPanel ? 6 : 8))
         .shadow(color: .black.opacity(isShowingPanel ? 0 : 0.2), radius: 20, x: 0, y: 10)
     }
@@ -163,10 +65,8 @@ struct PlayerBarCover: View {
     private func panelContent() -> some View {
         if viewModel.showLyrics {
             LyricsView()
-                .environment(\.colorScheme, .dark)
         } else if viewModel.showQueue {
             QueueView()
-                .environment(\.colorScheme, .dark)
         }
     }
 
@@ -183,7 +83,7 @@ struct PlayerBarCover: View {
                     .frame(height: isShowingPanel ? 22 : 26)
                     .matchedGeometryEffect(id: "title", in: animation)
 
-                Text(viewModel.currentTrack?.artistsDisplay ?? "")
+                ArtistLinksView(artists: viewModel.currentTrack?.artists ?? [], onNavigate: onDismiss)
                     .font(.system(size: isShowingPanel ? 15 : 17))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -242,7 +142,7 @@ struct PlayerBarCover: View {
                     viewModel.performSeek()
                 }
             }
-            .tint(.primary)
+            .tint(MixtapePalette.accent)
 
             // Time labels
             HStack {
@@ -276,38 +176,45 @@ struct PlayerBarCover: View {
 
     @ViewBuilder
     private func playbackControls() -> some View {
-        HStack(spacing: 48) {
+        HStack(spacing: 44) {
             // Previous
             Button {
                 viewModel.previous()
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 26, weight: .medium))
                     .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Previous")
 
             // Play/Pause
             Button {
                 viewModel.playPause()
             } label: {
                 Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 60, height: 60)
+                    .background(MixtapePalette.accent, in: Circle())
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .frame(width: 64)
+            .accessibilityLabel(Text(viewModel.isPlaying ? "Pause" : "Play", tableName: "MixtapeTheme"))
 
             // Next
             Button {
                 viewModel.next()
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 26, weight: .medium))
                     .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Next")
         }
     }
 
@@ -333,20 +240,20 @@ struct PlayerBarCover: View {
 
     @ViewBuilder
     private func bottomActions() -> some View {
-        HStack(spacing: 44) {
+        HStack(spacing: 24) {
             // Shuffle
             Button {
                 viewModel.toggleShuffle()
             } label: {
                 Image(systemName: "shuffle")
                     .font(.title3)
-                    .foregroundStyle(viewModel.shuffleEnabled ? .white : .secondary)
+                    .foregroundStyle(viewModel.shuffleEnabled ? MixtapePalette.accent : Color.secondary)
                     .scaleEffect(y: viewModel.shuffleEnabled ? -1 : 1)
                     .frame(width: 30, height: 30)
                     .padding(4)
                     .background {
                         Circle()
-                            .fill(.white.opacity(viewModel.shuffleEnabled ? 0.2 : 0))
+                            .fill(MixtapePalette.accent.opacity(viewModel.shuffleEnabled ? 0.2 : 0))
                     }
                     .animation(.easeInOut(duration: 0.3), value: viewModel.shuffleEnabled)
             }
@@ -367,12 +274,12 @@ struct PlayerBarCover: View {
             } label: {
                 Image(systemName: "quote.bubble.fill")
                     .font(.title3)
-                    .foregroundStyle(viewModel.showLyrics ? .white : .secondary)
+                    .foregroundStyle(viewModel.showLyrics ? MixtapePalette.accent : Color.secondary)
                     .frame(width: 30, height: 30)
                     .padding(4)
                     .background {
                         Circle()
-                            .fill(.white.opacity(viewModel.showLyrics ? 0.2 : 0))
+                            .fill(MixtapePalette.accent.opacity(viewModel.showLyrics ? 0.2 : 0))
                     }
                     .animation(.easeInOut, value: viewModel.showLyrics)
             }
@@ -392,16 +299,17 @@ struct PlayerBarCover: View {
             } label: {
                 Image(systemName: "list.bullet")
                     .font(.title3)
-                    .foregroundStyle(viewModel.showQueue ? .white : .secondary)
-                    .frame(width: 30, height: 30)
-                    .padding(4)
+                    .foregroundStyle(viewModel.showQueue ? MixtapePalette.accent : Color.secondary)
+                    .frame(width: 44, height: 44)
                     .background {
                         Circle()
-                            .fill(.white.opacity(viewModel.showQueue ? 0.2 : 0))
+                            .fill(MixtapePalette.accent.opacity(viewModel.showQueue ? 0.2 : 0))
                     }
                     .animation(.easeInOut, value: viewModel.showQueue)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Queue")
+            .accessibilityValue(viewModel.showQueue ? "Open" : "Closed")
 
             // Repeat
             Button {
@@ -409,13 +317,13 @@ struct PlayerBarCover: View {
             } label: {
                 Image(systemName: viewModel.repeatIcon)
                     .font(.title3)
-                    .foregroundStyle(viewModel.repeatMode != .off ? .white : .secondary)
+                    .foregroundStyle(viewModel.repeatMode != .off ? MixtapePalette.accent : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 30, height: 30)
                     .padding(4)
                     .background {
                         Circle()
-                            .fill(.white.opacity(viewModel.repeatMode != .off ? 0.2 : 0))
+                            .fill(MixtapePalette.accent.opacity(viewModel.repeatMode != .off ? 0.2 : 0))
                     }
                     .animation(.easeInOut, value: viewModel.repeatMode)
             }
@@ -494,6 +402,7 @@ private struct MixtapeStableTrackActions: View, Equatable {
             }
 
             // Nested menus own their state separately from playback progress.
+            QueueContextMenuItems(song: song)
             MixtapeQuickAddMenu(song: song)
             DownloadContextMenuItems(song: song)
 
@@ -506,7 +415,7 @@ private struct MixtapeStableTrackActions: View, Equatable {
         } label: {
             Image(systemName: "ellipsis.circle.fill")
                 .font(.system(size: 30, weight: .ultraLight))
-                .foregroundStyle(.white, .white.opacity(0.1))
+                .foregroundStyle(Color.primary, Color.primary.opacity(0.1))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

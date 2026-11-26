@@ -21,7 +21,7 @@ struct AlbumCard: View {
             placeholderView
         }
         .squareFrame(size: cardSize)
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: 5))
         .modifier(HoverPlayOverlay())
     }
 
@@ -33,7 +33,7 @@ struct AlbumCard: View {
     private var titleAndYear: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(album.title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
 
             if let year = album.year {

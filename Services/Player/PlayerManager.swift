@@ -57,17 +57,22 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
     /// Current repeat mode.
     private(set) var repeatMode: RepeatMode = .off
 
-    /// Playback queue.
-    private(set) var queue: [Song] = []
-    /// Index of current track in queue.
-    private(set) var currentIndex: Int = 0 {
-        didSet {
-            // Prefetch images when current track changes (sliding window)
-            if currentIndex != oldValue {
-                prefetchQueueImages()
-            }
+    private var playbackQueue = PlaybackQueue<Song>()
+    /// Song values remain available to existing views and AI tools.
+    var queue: [Song] { playbackQueue.entries.map(\.track) }
+    var queueEntries: [PlaybackQueue<Song>.Entry] { playbackQueue.entries }
+    var currentQueueEntry: PlaybackQueue<Song>.Entry? { playbackQueue.current }
+    var upcomingQueueEntries: [PlaybackQueue<Song>.Entry] { playbackQueue.upcoming }
+    private(set) var currentIndex: Int {
+        get { playbackQueue.currentIndex }
+        set {
+            let previous = playbackQueue.currentIndex
+            if playbackQueue.select(newValue), previous != newValue { prefetchQueueImages() }
         }
     }
+    private var queueSessionID = UUID()
+    private var activeQueueOccurrenceID: UUID?
+    private static let queueStateKey = "mixtape.playbackQueue.v40"
 
     /// Source playlist for the current queue (if playing from a playlist).
     private(set) var sourcePlaylist: Playlist?
@@ -347,6 +352,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         player.onPlaybackUpdate = { [weak self, weak player] isPlaying, currentTime, duration in
             guard let self, let player, self.audioPlayer === player else { return }
             self.updatePlaybackState(isPlaying: isPlaying, progress: currentTime, duration: duration)
+            ListeningHistoryStore.shared.observePlayback(isPlaying: isPlaying, position: currentTime)
         }
 
         player.onTrackEnded = { [weak self, weak player] in
@@ -410,6 +416,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
                 isPaused = true
             }
         case .ended, .error:
+            ListeningHistoryStore.shared.endPlaybackSession()
             isTransitioningTrack = false
             isPaused = true
         default:
@@ -431,6 +438,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
 
         // Check repeat mode
         if repeatMode == .one {
+            if let currentTrack { ListeningHistoryStore.shared.beginPlaybackSession(for: currentTrack) }
             await seek(to: 0)
             await resume()
             return
@@ -509,6 +517,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         let fallbackEnabled = UserDefaults.standard.object(forKey: "mixtape.ios18.allowWebFallback") as? Bool ?? true
         if !fallbackEnabled || !wantsPlayback {
             audioPlayer?.stop()
+            ListeningHistoryStore.shared.endPlaybackSession()
             logger.warning("Native streaming failed; preserving the selected playback policy and pause intent")
             isTransitioningTrack = false
             isPaused = true
@@ -575,6 +584,24 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         }
     }
 
+    /// Keep direct plays and queue navigation aligned by occurrence, then start
+    /// history before the first real playback callback (offline included).
+    private func prepareTrackSession(_ song: Song) {
+        if playbackQueue.current?.track.videoId == song.videoId {
+            playbackQueue.updateCurrent(song)
+        } else {
+            playbackQueue.replace(with: [song])
+            sourcePlaylist = nil
+            queueSessionID = UUID()
+        }
+        let occurrence = playbackQueue.current?.id
+        if activeQueueOccurrenceID != occurrence { audioPlayer?.stop() }
+        activeQueueOccurrenceID = occurrence
+        ListeningHistoryStore.shared.beginPlaybackSession(for: song)
+        WidgetSnapshotBridge.shared.updatePlayback(song: song, isPlaying: false)
+        saveQueueState()
+    }
+
     /// Plays a track by video ID.
     func play(videoId: String) async {
         // Reuse saved metadata when the selected ID is available offline.
@@ -605,6 +632,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
             videoId: videoId
         )
 
+        if let currentTrack { prepareTrackSession(currentTrack) }
         self.pendingPlayVideoId = videoId
 
         // Native player doesn't need user interaction popup (only WebView needs it)
@@ -628,6 +656,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
     /// Plays a song.
     func play(song: Song) async {
         self.logger.info("Playing song: \(song.title) [type: \(self.currentPlayerType.name)]")
+        prepareTrackSession(song)
 
         // Check for offline download — play locally
         let downloadManager = Container.shared.downloadManager()
@@ -796,6 +825,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
 
     /// Updates playback state from the persistent WebView observer.
     func updatePlaybackState(isPlaying: Bool, progress: Double, duration: Double) {
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: self.isPlaying,
+            position: progress, duration: duration, isAdvancing: isPlaying)
         let previousProgress = self.progress
         self.progress = progress
         self.duration = duration
@@ -989,6 +1020,10 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         if self.isPlaying {
             await self.pause()
         } else {
+            if currentTrack == nil, let queued = playbackQueue.current ?? playbackQueue.upcoming.first {
+                await playFromQueue(id: queued.id)
+                return
+            }
             // Nothing to play - try to fetch liked songs
             guard currentTrack != nil else {
                 self.logger.debug("No track to play, fetching liked songs")
@@ -1029,17 +1064,31 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.logger.debug("Pausing playback")
         self.isPaused = true
         audioPlayer?.pause()
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: false,
+            position: progress, duration: duration)
     }
 
     /// Resumes playback.
     func resume() async {
         self.logger.debug("Resuming playback")
         self.isPaused = false
-        if case .error = state, let currentTrack {
+        if state == .idle, let currentTrack {
+            // A restored queue has metadata but no loaded AVPlayer session.
+            // Queue-row and lock-screen Play must load it before requesting sound.
+            await play(song: currentTrack)
+        } else if state == .idle, let queued = playbackQueue.upcoming.first {
+            await playFromQueue(id: queued.id)
+        } else if case .error = state, let currentTrack {
             await play(song: currentTrack)
         } else {
+            if state == .ended {
+                if let currentTrack { ListeningHistoryStore.shared.beginPlaybackSession(for: currentTrack) }
+                await seek(to: 0)
+            }
             audioPlayer?.play()
         }
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying,
+            position: progress, duration: duration)
     }
 
     /// Skips to next track.
@@ -1048,24 +1097,6 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
 
         // Prioritize local queue if we have one
         if !self.queue.isEmpty {
-            // Handle repeat one mode - replay current track
-            if self.repeatMode == .one {
-                await self.seek(to: 0)
-                await self.resume()
-                return
-            }
-
-            // Handle shuffle mode - pick random track
-            if self.shuffleEnabled {
-                let randomIndex = Int.random(in: 0 ..< self.queue.count)
-                self.currentIndex = randomIndex
-                saveQueueState()
-                if let nextSong = queue[safe: currentIndex] {
-                    await self.play(song: nextSong)
-                }
-                return
-            }
-
             // Normal next behavior
             if self.currentIndex < self.queue.count - 1 {
                 self.currentIndex += 1
@@ -1126,6 +1157,8 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.seekingProgress = time
         audioPlayer?.seek(to: time)
         self.progress = time
+        WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying,
+            position: time, duration: duration, force: true)
     }
 
     /// Updates seeking progress while user is dragging the seek slider.
@@ -1177,6 +1210,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         let status = self.shuffleEnabled ? "enabled" : "disabled"
         self.logger.info("Shuffle mode: \(status)")
         UserDefaults.standard.set(shuffleEnabled, forKey: Self.shuffleKey)
+        if shuffleEnabled { shuffleQueue() }
     }
 
     /// Cycles through repeat modes: off -> all -> one -> off.
@@ -1209,6 +1243,9 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         nativeAudioWatchdogTask = nil
         nativeAudioWatchdogToken = UUID()
         audioPlayer?.stop()
+        ListeningHistoryStore.shared.endPlaybackSession()
+        activeQueueOccurrenceID = nil
+        queueSessionID = UUID()
         pendingPlayVideoId = nil
         showMiniPlayer = false
         isPlayingOffline = false
@@ -1217,6 +1254,7 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.isTransitioningTrack = false
         self.state = .idle
         self.currentTrack = nil
+        WidgetSnapshotBridge.shared.updatePlayback(song: nil, isPlaying: false)
         self.progress = 0
         self.duration = 0
     }
@@ -1236,9 +1274,10 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
             resetPlaybackPreferences()
         }
 
-        self.queue = songs
-        self.currentIndex = safeIndex
+        playbackQueue.replace(with: songs, startingAt: safeIndex)
+        queueSessionID = UUID()
         self.sourcePlaylist = sourcePlaylist
+        if shuffleEnabled { shuffleQueue() }
 
         self.logger.info("Queue set: \(songs.count) songs, starting at index \(safeIndex)")
         saveQueueState()
@@ -1253,23 +1292,25 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
         self.logger.info("Playing with radio: \(song.title)")
 
         // Start with just this song in the queue
-        self.queue = [song]
-        self.currentIndex = 0
+        playbackQueue.replace(with: [song])
+        queueSessionID = UUID()
+        let requestID = queueSessionID
+        sourcePlaylist = nil
         saveQueueState()
         await self.play(song: song)
 
-        // Fetch radio queue in background
-        await self.fetchAndApplyRadioQueue(for: song.videoId)
+        // A later play/clear cannot be overwritten by an older radio request.
+        await self.fetchAndApplyRadioQueue(for: song.videoId, requestID: requestID)
     }
 
     /// Fetches radio queue and applies it, keeping the current song at the front.
-    private func fetchAndApplyRadioQueue(for videoId: String) async {
+    private func fetchAndApplyRadioQueue(for videoId: String, requestID: UUID) async {
         await BackgroundTaskHelper.withBackgroundTask {
-            await self.performFetchAndApplyRadioQueue(for: videoId)
+            await self.performFetchAndApplyRadioQueue(for: videoId, requestID: requestID)
         }
     }
 
-    private func performFetchAndApplyRadioQueue(for videoId: String) async {
+    private func performFetchAndApplyRadioQueue(for videoId: String, requestID: UUID) async {
         do {
             let radioSongs = try await ytMusicClient.getRadioQueue(videoId: videoId)
             guard !radioSongs.isEmpty else {
@@ -1278,155 +1319,105 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
             }
 
             // Only update if we're still playing the same song
-            guard let currentSong = self.currentTrack, currentSong.videoId == videoId else {
+            guard queueSessionID == requestID,
+                  let currentSong = self.currentTrack, currentSong.videoId == videoId else {
                 self.logger.info("Track changed, discarding radio queue")
                 return
             }
 
-            // Ensure the current song is at the front of the queue
-            // The radio queue may or may not include the seed song
-            var newQueue: [Song] = []
-
-            // Check if the current song is already in the radio queue
-            let radioContainsCurrentSong = radioSongs.contains { $0.videoId == videoId }
-
-            if radioContainsCurrentSong {
-                // Find the index of current song and reorder queue to start from it
-                if let currentSongIndex = radioSongs.firstIndex(where: { $0.videoId == videoId }) {
-                    // Put current song first, then the rest
-                    newQueue.append(currentSong)
-                    for (index, song) in radioSongs.enumerated() where index != currentSongIndex {
-                        newQueue.append(song)
-                    }
-                } else {
-                    newQueue = radioSongs
-                }
-            } else {
-                // Current song not in radio queue - prepend it
-                newQueue.append(currentSong)
-                newQueue.append(contentsOf: radioSongs)
-            }
-
-            self.queue = newQueue
-            self.currentIndex = 0
-            self.saveQueueState()
-            self.logger.info("Radio queue updated with \(newQueue.count) songs (current song at front)")
+            // Preserve additions and reorder/removal made while radio was loading.
+            var existing = Set(queue.map(\.videoId))
+            let suggestions = radioSongs.filter { existing.insert($0.videoId).inserted }
+            playbackQueue.appendSource(suggestions)
+            if shuffleEnabled { shuffleQueue() }
+            saveQueueState()
+            logger.info("Radio appended \(suggestions.count) suggestions without replacing queue additions")
         } catch {
             self.logger.warning("Failed to fetch radio queue: \(error.localizedDescription)")
         }
     }
 
-    /// Clears the playback queue except for the currently playing track.
+    /// Clear upcoming music without interrupting the current occurrence.
     func clearQueue() {
-        guard let currentTrack else {
-            self.queue = []
-            self.currentIndex = 0
-            saveQueueState()
-            return
-        }
-        // Keep only the current track
-        self.queue = [currentTrack]
-        self.currentIndex = 0
+        queueSessionID = UUID()
+        if let currentTrack { playbackQueue.updateCurrent(currentTrack) }
+        playbackQueue.clearUpcoming()
+        sourcePlaylist = nil
         saveQueueState()
-        self.logger.info("Queue cleared, keeping current track")
     }
 
-    /// Plays a song from the queue at the specified index.
     func playFromQueue(at index: Int) async {
-        guard index >= 0, index < self.queue.count else { return }
-        self.currentIndex = index
+        guard playbackQueue.select(index), let song = playbackQueue.current?.track else { return }
         saveQueueState()
-        if let song = queue[safe: index] {
-            await self.play(song: song)
-        }
+        await play(song: song)
     }
 
-    /// Inserts songs immediately after the current track.
-    /// - Parameter songs: The songs to insert into the queue.
+    func playFromQueue(id: UUID) async {
+        guard let index = playbackQueue.entries.firstIndex(where: { $0.id == id }) else { return }
+        await playFromQueue(at: index)
+    }
+
+    /// Additions play FIFO ahead of the playlist or radio's remaining songs.
+    func addToQueue(_ songs: [Song]) {
+        playbackQueue.insert(songs, placement: .afterUserAdditions)
+        saveQueueState()
+    }
+
     func insertNextInQueue(_ songs: [Song]) {
-        guard !songs.isEmpty else { return }
-        let insertIndex = min(self.currentIndex + 1, self.queue.count)
-        self.queue.insert(contentsOf: songs, at: insertIndex)
+        playbackQueue.insert(songs, placement: .next)
         saveQueueState()
-        self.logger.info("Inserted \(songs.count) songs at position \(insertIndex)")
     }
 
-    /// Removes songs from the queue by video ID.
-    /// - Parameter videoIds: Set of video IDs to remove.
-    func removeFromQueue(videoIds: Set<String>) {
-        let previousCount = self.queue.count
-        self.queue.removeAll { videoIds.contains($0.videoId) }
-
-        // Adjust currentIndex if needed
-        if let current = currentTrack,
-           let newIndex = queue.firstIndex(where: { $0.videoId == current.videoId })
-        {
-            self.currentIndex = newIndex
-        } else if self.currentIndex >= self.queue.count {
-            self.currentIndex = max(0, self.queue.count - 1)
-        }
-
-        saveQueueState()
-        self.logger.info("Removed \(previousCount - self.queue.count) songs from queue")
-    }
-
-    /// Reorders the queue based on a new order of video IDs.
-    /// - Parameter videoIds: The new order of video IDs.
-    func reorderQueue(videoIds: [String]) {
-        var reordered: [Song] = []
-        var videoIdToSong: [String: Song] = [:]
-
-        for song in self.queue {
-            videoIdToSong[song.videoId] = song
-        }
-
-        for videoId in videoIds {
-            if let song = videoIdToSong[videoId] {
-                reordered.append(song)
-            }
-        }
-
-        self.queue = reordered
-
-        // Update currentIndex to match current track's new position
-        if let current = currentTrack,
-           let newIndex = queue.firstIndex(where: { $0.videoId == current.videoId })
-        {
-            self.currentIndex = newIndex
-        }
-
-        saveQueueState()
-        self.logger.info("Queue reordered with \(reordered.count) songs")
-    }
-
-    /// Shuffles the queue, keeping the current track in place at the front.
-    func shuffleQueue() {
-        guard self.queue.count > 1 else { return }
-
-        // Remove current track, shuffle the rest, put current track at front
-        if let currentSong = queue[safe: currentIndex] {
-            var shuffled = self.queue
-            shuffled.remove(at: self.currentIndex)
-            shuffled.shuffle()
-            shuffled.insert(currentSong, at: 0)
-            self.queue = shuffled
-            self.currentIndex = 0
-        } else {
-            self.queue.shuffle()
-            self.currentIndex = 0
-        }
-
-        saveQueueState()
-        self.logger.info("Queue shuffled")
-    }
-
-    /// Adds songs to the end of the queue.
-    /// - Parameter songs: The songs to append to the queue.
+    /// Explicit end placement, distinct from the user additions' priority block.
     func appendToQueue(_ songs: [Song]) {
-        guard !songs.isEmpty else { return }
-        self.queue.append(contentsOf: songs)
+        playbackQueue.insert(songs, placement: .end)
         saveQueueState()
-        self.logger.info("Appended \(songs.count) songs to queue")
+    }
+
+    func removeQueueEntry(id: UUID) {
+        playbackQueue.remove(ids: [id])
+        saveQueueState()
+    }
+
+    func moveQueueEntryToNext(id: UUID) {
+        playbackQueue.moveToNext(id: id)
+        saveQueueState()
+    }
+
+    func moveQueueEntryToEnd(id: UUID) {
+        playbackQueue.moveToEnd(id: id)
+        saveQueueState()
+    }
+
+    func moveUpcomingQueue(from offsets: IndexSet, to destination: Int) {
+        playbackQueue.moveUpcoming(from: offsets, to: destination)
+        saveQueueState()
+    }
+
+    /// Legacy AI tools remove matching upcoming/history occurrences, preserving
+    /// the current occurrence even when the same video is present more than once.
+    func removeFromQueue(videoIds: Set<String>) {
+        let ids = Set(playbackQueue.entries.filter { videoIds.contains($0.track.videoId) }.map(\.id))
+        playbackQueue.remove(ids: ids)
+        saveQueueState()
+    }
+
+    /// Consume each requested occurrence once and retain omitted upcoming songs.
+    func reorderQueue(videoIds: [String]) {
+        var remaining = playbackQueue.upcoming
+        var ids: [UUID] = []
+        for videoID in videoIds {
+            guard let index = remaining.firstIndex(where: { $0.track.videoId == videoID }) else { continue }
+            ids.append(remaining.remove(at: index).id)
+        }
+        playbackQueue.reorderUpcoming(ids: ids)
+        saveQueueState()
+    }
+
+    func shuffleQueue() {
+        var generator = SystemRandomNumberGenerator()
+        playbackQueue.shuffleUpcoming(using: &generator)
+        saveQueueState()
     }
 
     // MARK: - Like/Dislike/Library Actions
@@ -1598,6 +1589,12 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
                     feedbackTokens: songData.feedbackTokens
                 )
 
+                if let currentTrack {
+                    playbackQueue.updateCurrent(currentTrack)
+                    ListeningHistoryStore.shared.updateCurrentSong(currentTrack)
+                    WidgetSnapshotBridge.shared.updatePlayback(song: currentTrack, isPlaying: isPlaying)
+                    saveQueueState()
+                }
                 // Update service state
                 if let likeStatus = songData.likeStatus {
                     self.currentTrackLikeStatus = likeStatus
@@ -1618,24 +1615,24 @@ final class PlayerManager: NSObject, PlayerManagerProtocol {
     private func saveQueueState() {
         AppDefaults.shared.savedQueue = queue
         AppDefaults.shared.savedQueueIndex = currentIndex
+        if let data = try? JSONEncoder().encode(playbackQueue) {
+            UserDefaults.standard.set(data, forKey: Self.queueStateKey)
+        }
         logger.debug("Saved queue state: \(self.queue.count) songs, index \(self.currentIndex)")
     }
 
     /// Restores the queue and current track from persistent storage.
     private func restoreQueueState() {
-        guard let savedQueue = AppDefaults.shared.savedQueue, !savedQueue.isEmpty else {
-            logger.debug("No saved queue to restore")
+        if let data = UserDefaults.standard.data(forKey: Self.queueStateKey),
+           let saved = try? JSONDecoder().decode(PlaybackQueue<Song>.self, from: data), saved.isValid {
+            playbackQueue = saved
+            currentTrack = saved.current?.track
             return
         }
-
-        let savedIndex = AppDefaults.shared.savedQueueIndex
-        let safeIndex = max(0, min(savedIndex, savedQueue.count - 1))
-
-        queue = savedQueue
-        currentIndex = safeIndex
-        currentTrack = savedQueue[safeIndex]
-
-        logger.info("Restored queue state: \(savedQueue.count) songs, index \(safeIndex), track: \(self.currentTrack?.title ?? "unknown")")
+        guard let songs = AppDefaults.shared.savedQueue, !songs.isEmpty else { return }
+        playbackQueue.replace(with: songs, startingAt: AppDefaults.shared.savedQueueIndex)
+        currentTrack = playbackQueue.current?.track
+        saveQueueState()
     }
 
     // MARK: - Private Methods
