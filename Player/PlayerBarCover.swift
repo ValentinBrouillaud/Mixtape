@@ -184,8 +184,10 @@ struct PlayerBarCover: View {
                 Image(systemName: "backward.fill")
                     .font(.system(size: 26, weight: .medium))
                     .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Previous")
 
             // Play/Pause
             Button {
@@ -200,6 +202,7 @@ struct PlayerBarCover: View {
             }
             .buttonStyle(.plain)
             .frame(width: 64)
+            .accessibilityLabel(Text(viewModel.isPlaying ? "Pause" : "Play", tableName: "MixtapeTheme"))
 
             // Next
             Button {
@@ -208,8 +211,10 @@ struct PlayerBarCover: View {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 26, weight: .medium))
                     .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Next")
         }
     }
 
@@ -410,7 +415,7 @@ private struct MixtapeStableTrackActions: View, Equatable {
         } label: {
             Image(systemName: "ellipsis.circle.fill")
                 .font(.system(size: 30, weight: .ultraLight))
-                .foregroundStyle(.white, .white.opacity(0.1))
+                .foregroundStyle(Color.primary, Color.primary.opacity(0.1))
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
