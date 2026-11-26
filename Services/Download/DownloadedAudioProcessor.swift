@@ -47,6 +47,7 @@ nonisolated enum DownloadedAudioProcessor {
         try Task.checkCancellation()
         guard url.isFileURL else { throw Failure.invalidAudio }
         let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        defer { file.close() }
         let format = file.processingFormat
         guard format.sampleRate.isFinite, (1...384_000).contains(format.sampleRate),
               (1...32).contains(format.channelCount),
@@ -151,6 +152,7 @@ nonisolated enum DownloadedAudioProcessor {
         let output = try scan(at: url)
         let reported = try await AVURLAsset(url: url).load(.duration).seconds
         let file = try AVAudioFile(forReading: url)
+        defer { file.close() }
         let codec = file.fileFormat.streamDescription.pointee.mFormatID
         guard [kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE, kAudioFormatMPEG4AAC_HE_V2].contains(codec) else {
             throw Failure.cannotNormalize
@@ -166,16 +168,18 @@ nonisolated enum DownloadedAudioProcessor {
 
     private static func writeAAC(from input: URL, to output: URL, frames: AVAudioFramePosition, scan: Scan, bitRate: Int?) throws {
         let reader = try AVAudioFile(forReading: input, commonFormat: .pcmFormatFloat32, interleaved: false)
+        defer { reader.close() }
         guard let buffer = AVAudioPCMBuffer(pcmFormat: reader.processingFormat, frameCapacity: 32_768) else { throw Failure.invalidAudio }
         let selectedBitRate = min(512_000, max(32_000, bitRate ?? Int(scan.channels) * 128_000))
-        // The writer closes when this scope returns, before validating the new
-        // MP4 metadata and decoding its actual samples.
+        // Explicitly finalize AAC packets and MP4 metadata before validation;
+        // an autoreleased writer can otherwise leave a zero-length timeline.
         let writer = try AVAudioFile(forWriting: output, settings: [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: scan.sampleRate,
             AVNumberOfChannelsKey: scan.channels,
             AVEncoderBitRateKey: selectedBitRate,
         ], commonFormat: .pcmFormatFloat32, interleaved: false)
+        defer { writer.close() }
         var remaining = frames
         while remaining > 0 {
             try Task.checkCancellation()

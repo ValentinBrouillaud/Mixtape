@@ -138,6 +138,7 @@ private enum DurationFixture {
         ]
         do {
             let writer = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            defer { writer.close() }
             var position = 0
             for (seconds, amplitude) in segments {
                 var remaining = Int(seconds * rate)
