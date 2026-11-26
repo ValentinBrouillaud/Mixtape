@@ -31,8 +31,8 @@ enum WidgetPreviewRenderer {
         let playlist = MixtapeWidgetPlaylist(id: UUID().uuidString, title: "Les favoris", songCount: 24, artworkFileName: songs[2].artworkFileName)
         let resume = widget(ResumeWidgetView(snapshot: snapshot), family: .systemSmall)
         let recents = widget(RecentsWidgetView(snapshot: snapshot), family: .systemMedium)
-        let smallPlaylist = widget(FavoritePlaylistWidgetView(playlist: playlist), family: .systemSmall)
-        let mediumPlaylist = widget(FavoritePlaylistWidgetView(playlist: playlist), family: .systemMedium)
+        let smallPlaylist = widget(FavoritePlaylistContent(playlist: playlist, family: .systemSmall), family: .systemSmall)
+        let mediumPlaylist = widget(FavoritePlaylistContent(playlist: playlist, family: .systemMedium), family: .systemMedium)
         try render(resume, to: output.appendingPathComponent("resume-small.png"))
         try render(recents, to: output.appendingPathComponent("recents-medium.png"))
         try render(smallPlaylist, to: output.appendingPathComponent("playlist-small.png"))
@@ -63,7 +63,6 @@ enum WidgetPreviewRenderer {
             .frame(width: family == .systemSmall ? smallWidth : 338, height: smallWidth)
             .background(WidgetStyle.background)
             .clipShape(RoundedRectangle(cornerRadius: 22))
-            .environment(\.widgetFamily, family)
             .environment(\.colorScheme, .dark)
     }
 

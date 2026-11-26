@@ -96,7 +96,7 @@ struct RecentsWidgetView: View {
                             WidgetArtwork(fileName: song.artworkFileName, size: 40)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(Text(song.title) + Text(", ") + Text(song.artist))
+                        .accessibilityLabel(Text("\(song.title), \(song.artist)"))
                     }
                     Spacer(minLength: 0)
                 }
@@ -110,6 +110,15 @@ struct RecentsWidgetView: View {
 struct FavoritePlaylistWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let playlist: MixtapeWidgetPlaylist?
+
+    var body: some View {
+        FavoritePlaylistContent(playlist: playlist, family: family)
+    }
+}
+
+struct FavoritePlaylistContent: View {
+    let playlist: MixtapeWidgetPlaylist?
+    let family: WidgetFamily
 
     private var destination: URL {
         if let playlist, let id = UUID(uuidString: playlist.id) { return MixtapeWidgetRoute.playlist(id: id).url }
